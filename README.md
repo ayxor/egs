@@ -165,4 +165,29 @@ Responses: `200 OK` · `401 Unauthorized` · `403 Forbidden` (different institut
 
 ## Deployment
 
-> To be completed. A `Dockerfile` and environment variable reference will be provided here. The Composer requires a PostgreSQL database and network access to Keycloak, Object Storage, Video Editor, and Notifications services.
+### Run locally
+
+```bash
+pip install -r requirements.txt
+python app.py   # listens on :8080
+```
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `KEYCLOAK_URL` | Keycloak base URL (default: `http://keycloak:8080`) |
+| `KEYCLOAK_REALM` | Realm name (default: `egs`) |
+| `KEYCLOAK_CLIENT_ID` | Client ID (default: `egs-platform`) |
+| `KEYCLOAK_CLIENT_SECRET` | Client secret for service authentication |
+| `OBJECT_STORAGE_URL` | Object Storage base URL (default: `http://object-storage:8080`) |
+| `OBJECT_STORAGE_API_KEY` | API key for Object Storage |
+| `VIDEO_EDITOR_URL` | Video Editor base URL (default: `http://video-editor:8080`) |
+| `VIDEO_EDITOR_API_KEY` | API key for Video Editor |
+| `NOTIFICATIONS_URL` | Notifications base URL (default: `http://notifications:8080`) |
+| `NOTIFICATIONS_API_KEY` | API key for Notifications |
+| `DATABASE_URL` | PostgreSQL connection string |
+
+### Docker
+
+> To be completed.
