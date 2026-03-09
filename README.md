@@ -104,4 +104,19 @@ Request body:
 
 ## Deployment
 
-> To be completed. A `Dockerfile` and environment variable reference will be provided here, including API key configuration and the storage backend used.
+### Run locally
+
+```bash
+pip install -r requirements.txt
+python app.py   # listens on :8080
+```
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `OBJECT_STORAGE_API_KEY` | Shared secret expected in the `X-API-Key` header (default: `stub-api-key`) |
+
+### Docker
+
+> To be completed.
