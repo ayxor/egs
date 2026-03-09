@@ -1,4 +1,4 @@
-# EGS Video Platform
+# UAStream
 
 A teaching-focused video streaming platform designed to centralise and enhance access to academic lecture content within higher education institutions.
 
@@ -12,7 +12,7 @@ Lecture recordings are scattered across disconnected platforms, lack structured 
 
 ### Solution
 
-The EGS Video Platform addresses these gaps through a modular, service-oriented architecture that integrates identity management, video processing, object storage, and notification delivery into a single cohesive system. The platform is built around loose coupling and clear service boundaries, making it straightforward to operate, extend, and onboard new institutions.
+The UAStream Video Platform addresses these gaps through a modular, service-oriented architecture that integrates identity management, video processing, object storage, and notification delivery into a single cohesive system. The platform is built around loose coupling and clear service boundaries, making it straightforward to operate, extend, and onboard new institutions.
 
 ### Key Advantages
 
