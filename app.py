@@ -98,7 +98,11 @@ def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | No
 
     except Exception as exc:
         print(f"[STUB] job={job_id} failed: {exc}")
-        _update_job(job_id, status="failed", percent=_jobs[job_id]["percent"])
+        with _jobs_lock:
+            current_percent = _jobs[job_id]["percent"]
+            _jobs[job_id]["status"] = "failed"
+            _jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        print(f"[STUB] job={job_id} marked as failed at {current_percent}%")
 
 
 # ---------------------------------------------------------------------------
