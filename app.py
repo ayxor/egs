@@ -36,7 +36,7 @@ def _require_api_key():
 # ---------------------------------------------------------------------------
 
 TEMPLATES: dict[str, list[str]] = {
-    "welcome":        ["name"],
+    "welcome":         ["name"],
     "upload_complete": ["name", "title"],
 }
 
@@ -60,9 +60,12 @@ def send_email():
         return err
 
     body = request.get_json(force=True) or {}
-    for field in ("to", "subject", "template", "data"):
-        if not body.get(field) and body.get(field) != {}:
+
+    for field in ("to", "subject", "template"):
+        if not body.get(field):
             return jsonify({"error": f"missing required field: {field}"}), 400
+    if "data" not in body:
+        return jsonify({"error": "missing required field: data"}), 400
 
     template_name = body["template"]
     if template_name not in TEMPLATES:
