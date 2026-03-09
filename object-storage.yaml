@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: Object Storage Service
+  description: >
+    Generic file storage service. Completely agnostic to content type.
+    Accepts, serves, and generates presigned URLs for any binary object.
+    Accessible only by internal services (Composer, Video Editor) via API key.
+  version: 1.0.0
+
+servers:
+  - url: http://object-storage:8080
+    description: Internal service
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    ObjectCreated:
+      type: object
+      properties:
+        bucket:
+          type: string
+          example: universidade-aveiro
+        key:
+          type: string
+          example: raw/abc123.mp4
+
+    PresignRequest:
+      type: object
+      required: [method, expires_in]
+      properties:
+        method:
+          type: string
+          enum: [GET, PUT]
+          example: GET
+        expires_in:
+          type: integer
+          description: Expiry duration in seconds
+          example: 3600
+
+    PresignResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          example: http://object-storage:8080/objects/universidade-aveiro/raw/abc123.mp4?token=xyz&expires=...
+        expires_at:
+          type: string
+          format: date-time
+          example: 2024-03-01T11:00:00Z
+
+    BucketCreated:
+      type: object
+      properties:
+        bucket:
+          type: string
+          example: universidade-aveiro
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: bucket or key not found
+
+paths:
+
+  /buckets/{bucket}:
+    put:
+      summary: Create a bucket
+      description: Creates a new namespace (bucket) for organizing objects.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+      responses:
+        '201':
+          description: Bucket created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BucketCreated'
+        '409':
+          description: Bucket already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a bucket
+      description: Deletes a bucket and all its contents.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+      responses:
+        '204':
+          description: Bucket deleted successfully
+        '404':
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /objects/{bucket}/{key}:
+    put:
+      summary: Upload an object
+      description: >
+        Stores a binary object under the given bucket and key.
+        The service is agnostic to content type.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: raw/abc123.mp4
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Object stored successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectCreated'
+        '400':
+          description: Invalid bucket or key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      summary: Download an object
+      description: >
+        Returns the raw bytes of the stored object.
+        Supports optional HTTP Range requests for partial content (e.g. video streaming).
+        If no Range header is provided, returns the full object.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: raw/abc123.mp4
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional HTTP Range header for partial content requests
+          example: bytes=0-1023
+      responses:
+        '200':
+          description: Full object returned
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Partial content returned (response to Range request)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Bucket or key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete an object
+      description: Removes an object from the given bucket.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: raw/abc123.mp4
+      responses:
+        '204':
+          description: Object deleted successfully
+        '404':
+          description: Bucket or key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /objects/{bucket}/{key}/presign:
+    post:
+      summary: Generate a presigned URL
+      description: >
+        Generates a temporary, scoped URL for direct access to an object.
+        The URL can be for GET (download) or PUT (upload).
+        PUT presigned URLs are used by the Composer to provide the Video Editor
+        with a destination to upload processed files directly.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          example: processed/abc123.mp4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresignRequest'
+      responses:
+        '200':
+          description: Presigned URL generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignResponse'
+        '404':
+          description: Bucket or key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
