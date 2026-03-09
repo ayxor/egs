@@ -184,6 +184,11 @@ def presign(bucket, key):
     if method not in ("GET", "PUT"):
         return jsonify({"error": "method must be GET or PUT"}), 400
 
+    # For GET presigns the object must already exist.
+    # For PUT presigns the object may not exist yet — that is the intended use case.
+    if method == "GET" and key not in _store[bucket]:
+        return jsonify({"error": "bucket or key not found"}), 404
+
     # Stub: build a fake presigned URL
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
     url = (
