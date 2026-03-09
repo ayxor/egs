@@ -112,7 +112,7 @@ def register_user():
         if not body.get(field):
             return jsonify({"error": f"missing required field: {field}"}), 400
 
-    valid_roles = {"professor", "student"}
+    valid_roles = ["professor", "student"]
     if body["role"] not in valid_roles:
         return jsonify({"error": f"role must be one of {valid_roles}"}), 400
 
@@ -180,7 +180,8 @@ def upload_video():
 def upload_video_with_processing():
     """
     Upload a video WITH Video Editor processing.
-    Returns 202 + job_id and opens an SSE stream for progress.
+    Returns 202 and opens an SSE stream for progress.
+    The final SSE event (status: done) includes the video_id.
     TODO:
       1. Validate JWT (professor role)
       2. PUT raw bytes to Object Storage
@@ -205,15 +206,13 @@ def upload_video_with_processing():
 
     job_id = str(uuid.uuid4())
 
-    # Stub SSE stream — replace with real relay from Video Editor
     def sse_stream():
-        for percent in [0, 25, 50, 75, 100]:
-            event = f'data: {{"job_id": "{job_id}", "percent": {percent}, "status": "{"done" if percent == 100 else "processing"}"}}\n\n'
-            yield event
+        for percent in [0, 25, 50, 75]:
+            yield f'data: {{"job_id": "{job_id}", "percent": {percent}, "status": "processing"}}\n\n'
             time.sleep(0.5)
-        # On completion include video_id
-        video_id = str(uuid.uuid4())
-        yield f'data: {{"job_id": "{job_id}", "percent": 100, "status": "done", "video_id": "{video_id}"}}\n\n'
+        # Single final event: done + video_id
+        final_video_id = str(uuid.uuid4())
+        yield f'data: {{"job_id": "{job_id}", "percent": 100, "status": "done", "video_id": "{final_video_id}"}}\n\n'
 
     return Response(sse_stream(), status=202, mimetype="text/event-stream")
 
