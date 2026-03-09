@@ -1,0 +1,148 @@
+openapi: 3.0.3
+info:
+  title: Notifications Service
+  description: >
+    Generic email notification service. Completely agnostic to business logic —
+    it does not decide when to send emails or to whom. It only sends emails when
+    explicitly requested by the Composer.
+    Accessible only by internal services via API key.
+    Generic enough to be shared and reused by other projects.
+  version: 1.0.0
+
+servers:
+  - url: http://notifications:8080
+    description: Internal service
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    EmailRequest:
+      type: object
+      required: [to, subject, template, data]
+      properties:
+        to:
+          type: string
+          format: email
+          example: professor@ua.pt
+        subject:
+          type: string
+          example: Vídeo submetido com sucesso
+        template:
+          type: string
+          example: upload_complete
+        data:
+          type: object
+          description: >
+            Key-value pairs required by the template.
+            Fields vary per template — use GET /notifications/templates/{template}
+            to discover required fields.
+          example:
+            name: Professor Diogo
+            title: Aula 1 - VHDL
+
+    TemplateList:
+      type: object
+      properties:
+        templates:
+          type: array
+          items:
+            type: string
+          example: [welcome, upload_complete]
+
+    TemplateDetail:
+      type: object
+      properties:
+        template:
+          type: string
+          example: upload_complete
+        fields:
+          type: array
+          items:
+            type: string
+          example: [name, title]
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: template not found
+
+paths:
+
+  /notifications/email:
+    post:
+      summary: Send an email
+      description: >
+        Accepts an email request and queues it for delivery.
+        Responds with 202 Accepted because sending is asynchronous —
+        the service guarantees it will attempt delivery, not that it has delivered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+      responses:
+        '202':
+          description: Email accepted for delivery (asynchronous)
+        '400':
+          description: Missing or invalid required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/templates:
+    get:
+      summary: List available templates
+      description: Returns the list of all available email templates.
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateList'
+
+  /notifications/templates/{template}:
+    get:
+      summary: Get template details
+      description: >
+        Returns the details of a specific template, including
+        the fields that must be provided in the data object when
+        calling POST /notifications/email.
+      parameters:
+        - name: template
+          in: path
+          required: true
+          schema:
+            type: string
+          example: upload_complete
+      responses:
+        '200':
+          description: Template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDetail'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
