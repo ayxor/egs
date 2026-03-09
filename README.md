@@ -102,4 +102,23 @@ Response `200 OK`:
 
 ## Deployment
 
-> To be completed. A `Dockerfile` and environment variable reference will be provided here, including API key configuration and the email delivery backend (SMTP credentials or third-party provider).
+### Run locally
+
+```bash
+pip install -r requirements.txt
+python app.py   # listens on :8080
+```
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `NOTIFICATIONS_API_KEY` | Shared secret expected in the `X-API-Key` header (default: `stub-api-key`) |
+| `SMTP_HOST` | SMTP server hostname |
+| `SMTP_PORT` | SMTP server port (default: `587`) |
+| `SMTP_USER` | SMTP username |
+| `SMTP_PASSWORD` | SMTP password |
+
+### Docker
+
+> To be completed.
