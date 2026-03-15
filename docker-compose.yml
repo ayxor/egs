@@ -60,6 +60,7 @@ services:
       - "8180:8080"
     volumes:
       - ./keycloak/realm-egs.json:/opt/keycloak/data/import/realm-egs.json:ro
+      - ./keycloak/themes/uastream:/opt/keycloak/themes/uastream:ro
     depends_on:
       kc-db:
         condition: service_healthy

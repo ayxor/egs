@@ -99,6 +99,11 @@
   "supportedLocales": [],
   "defaultLocale": "en",
 
+  "loginTheme": "uastream",
+  "accountTheme": "keycloak",
+  "adminTheme": "keycloak",
+  "emailTheme": "keycloak",
+
   "eventsEnabled": false,
   "adminEventsEnabled": false,
   "adminEventsDetailsEnabled": false

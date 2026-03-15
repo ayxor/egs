@@ -1,0 +1,382 @@
+/* ============================================================
+   UAStream – Keycloak login theme
+   Overrides Keycloak's PatternFly 5 defaults with the
+   UAStream design system (same tokens, fonts, and components
+   used by the Composer frontend).
+   ============================================================ */
+
+/* --- Google Fonts ----------------------------------------- */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Space+Grotesk:wght@700&display=swap");
+
+/* --- Design tokens ---------------------------------------- */
+:root {
+  --bg:            #f5efe4;
+  --surface:       rgba(255, 251, 244, 0.92);
+  --surface-strong:#fffaf2;
+  --ink:           #1c140d;
+  --muted:         #6a5e50;
+  --line:          rgba(28, 20, 13, 0.12);
+  --accent:        #d7623d;
+  --teal:          #1f7a72;
+  --danger:        #9b2d2d;
+  --ok:            #1f7a4b;
+  --shadow:        0 20px 52px rgba(70, 43, 26, 0.16);
+}
+
+/* --- Reset ------------------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* --- Page background --------------------------------------- */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: "Manrope", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(215, 98, 61, 0.24), transparent 26%),
+    radial-gradient(circle at 88% 16%, rgba(31, 122, 114, 0.20), transparent 24%),
+    linear-gradient(180deg, #fffaf3 0%, #efe5d5 100%);
+  overflow-x: hidden;
+}
+
+/* Subtle dot grid overlay matching the site --bg-layer */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image: radial-gradient(rgba(28, 20, 13, 0.09) 0.7px, transparent 0.7px);
+  background-size: 18px 18px;
+  z-index: 0;
+}
+
+/* --- PatternFly layout overrides -------------------------- */
+
+/* The outermost PF5 login wrapper */
+.pf-v5-c-login,
+.login-pf-page {
+  background: transparent !important;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+}
+
+/* The inner container — constrain width like .auth-card */
+.pf-v5-c-login__container,
+.pf-v5-c-login > div,
+.login-pf-page .container-fluid {
+  width: min(480px, 100%);
+}
+
+/* --- Brand / header --------------------------------------- */
+
+/* Hide PF's default product name text — we paint our own */
+.pf-v5-c-login__header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.pf-v5-c-login__header-title,
+.pf-v5-c-brand,
+#kc-header,
+#kc-header-wrapper {
+  font-family: "Space Grotesk", sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 1rem !important;
+  color: var(--muted) !important;
+  letter-spacing: 0.04em;
+}
+
+/* Inject brand mark + wordmark via generated content */
+.pf-v5-c-login__header::before {
+  content: "UA";
+  display: inline-grid;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), #f0b690);
+  color: #fffaf2;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: 1.35rem;
+  margin-bottom: 10px;
+}
+
+/* The realm / app name text below the mark */
+.pf-v5-c-login__header-title {
+  display: block;
+}
+
+/* Page title inside the card (e.g. "Sign in to your account") */
+#kc-page-title,
+.pf-v5-c-login__main-header-title,
+.pf-v5-c-title {
+  font-family: "Space Grotesk", sans-serif !important;
+  font-size: 1.55rem !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+  margin: 0 0 4px !important;
+}
+
+/* --- Main card -------------------------------------------- */
+.pf-v5-c-login__main,
+.card-pf {
+  border: 1px solid var(--line) !important;
+  border-radius: 24px !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 28px !important;
+  backdrop-filter: blur(2px);
+}
+
+.pf-v5-c-login__main-header {
+  padding: 0 0 16px !important;
+  border: none !important;
+}
+
+.pf-v5-c-login__main-body {
+  padding: 0 !important;
+}
+
+.pf-v5-c-login__main-footer {
+  padding: 16px 0 0 !important;
+  border-top: 1px solid var(--line) !important;
+  margin-top: 16px !important;
+}
+
+/* --- Form labels ------------------------------------------ */
+.pf-v5-c-form__label-text,
+.pf-v5-c-form__label,
+label {
+  font-family: "Manrope", sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 0.88rem !important;
+  color: var(--ink) !important;
+}
+
+/* --- Inputs ----------------------------------------------- */
+.pf-v5-c-form-control,
+.pf-v5-c-form-control > input,
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+  width: 100% !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px !important;
+  padding: 12px 13px !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  font-family: "Manrope", sans-serif !important;
+  font-size: 1rem !important;
+  color: var(--ink) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transition: border-color 0.15s;
+}
+
+.pf-v5-c-form-control:focus-within,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(215, 98, 61, 0.14) !important;
+}
+
+/* Remove PF's inner icon wrapper padding bleed */
+.pf-v5-c-form-control__utilities {
+  background: transparent !important;
+}
+
+/* "Show password" toggle button */
+.pf-v5-c-button.pf-m-plain {
+  color: var(--muted) !important;
+}
+
+/* --- Primary button (Sign in) ----------------------------- */
+.pf-v5-c-button.pf-m-primary,
+.pf-v5-c-button[type="submit"],
+input[type="submit"],
+#kc-login {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  padding: 12px 16px !important;
+  background: var(--ink) !important;
+  color: #fffaf3 !important;
+  font-family: "Manrope", sans-serif !important;
+  font-weight: 800 !important;
+  font-size: 1rem !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  transition: opacity 0.15s;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+.pf-v5-c-button[type="submit"]:hover,
+input[type="submit"]:hover,
+#kc-login:hover {
+  opacity: 0.86 !important;
+}
+
+/* --- Secondary / link buttons ----------------------------- */
+.pf-v5-c-button.pf-m-secondary,
+.pf-v5-c-button.pf-m-link,
+.pf-v5-c-button.pf-m-inline {
+  border: 1px solid var(--line) !important;
+  border-radius: 999px !important;
+  padding: 10px 14px !important;
+  background: transparent !important;
+  color: var(--ink) !important;
+  font-family: "Manrope", sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 0.95rem !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.pf-v5-c-button.pf-m-link.pf-m-inline {
+  border: none !important;
+  padding: 0 !important;
+  color: var(--accent) !important;
+}
+
+/* --- Alert / error messages ------------------------------- */
+.pf-v5-c-alert,
+#kc-error-message,
+.alert-error,
+.pf-v5-c-alert.pf-m-danger {
+  border: 1px solid rgba(155, 45, 45, 0.28) !important;
+  border-radius: 12px !important;
+  background: rgba(155, 45, 45, 0.08) !important;
+  color: #6a2222 !important;
+  padding: 10px 12px !important;
+  font-weight: 700 !important;
+  font-size: 0.9rem !important;
+}
+
+.pf-v5-c-alert.pf-m-warning {
+  border-color: rgba(153, 98, 15, 0.28) !important;
+  background: rgba(153, 98, 15, 0.08) !important;
+  color: #6e460a !important;
+}
+
+.pf-v5-c-alert.pf-m-success {
+  border-color: rgba(31, 122, 75, 0.28) !important;
+  background: rgba(31, 122, 75, 0.08) !important;
+  color: #155635 !important;
+}
+
+/* Alert icon tint */
+.pf-v5-c-alert.pf-m-danger  .pf-v5-c-alert__icon { color: var(--danger) !important; }
+.pf-v5-c-alert.pf-m-warning .pf-v5-c-alert__icon { color: var(--warn)   !important; }
+.pf-v5-c-alert.pf-m-success .pf-v5-c-alert__icon { color: var(--ok)     !important; }
+
+/* Inline input validation messages */
+.pf-v5-c-form__helper-text,
+.pf-v5-c-form__helper-text-icon {
+  font-size: 0.83rem !important;
+  color: var(--muted) !important;
+}
+
+.pf-v5-c-form__helper-text.pf-m-error {
+  color: var(--danger) !important;
+}
+
+/* --- "Remember me" / checkbox ----------------------------- */
+.pf-v5-c-check__label {
+  font-family: "Manrope", sans-serif !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+  font-size: 0.9rem !important;
+}
+
+.pf-v5-c-check__input:focus {
+  outline: 2px solid var(--accent) !important;
+}
+
+/* Accent the checkbox tick */
+.pf-v5-c-check__input:checked {
+  accent-color: var(--accent);
+}
+
+/* --- "Forgot password" / registration links --------------- */
+.pf-v5-c-login__main-footer-links,
+#kc-registration,
+.instruction {
+  font-family: "Manrope", sans-serif !important;
+  font-size: 0.9rem !important;
+  color: var(--muted) !important;
+  text-align: center;
+}
+
+.pf-v5-c-login__main-footer-links a,
+#kc-registration a,
+.instruction a {
+  color: var(--accent) !important;
+  font-weight: 700 !important;
+  text-decoration: none !important;
+}
+
+.pf-v5-c-login__main-footer-links a:hover,
+#kc-registration a:hover,
+.instruction a:hover {
+  text-decoration: underline !important;
+}
+
+/* --- Divider ("Or log in with") --------------------------- */
+.pf-v5-c-divider,
+.hr-text {
+  border-color: var(--line) !important;
+  color: var(--muted) !important;
+  font-size: 0.82rem !important;
+}
+
+/* --- Social / identity provider buttons ------------------- */
+.pf-v5-c-button.pf-m-secondary[id^="social-"],
+.zocial,
+.social > ul > li > a {
+  border: 1px solid var(--line) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  color: var(--ink) !important;
+  font-weight: 700 !important;
+}
+
+/* --- Footer ----------------------------------------------- */
+.pf-v5-c-login__footer,
+#kc-info {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 20px;
+  font-family: "Manrope", sans-serif;
+}
+
+/* --- Spinner (loading state) ------------------------------ */
+.pf-v5-c-spinner__path {
+  stroke: var(--accent) !important;
+}
+
+/* --- Locale selector -------------------------------------- */
+#kc-locale-wrapper,
+.pf-v5-c-login__main-header-desc {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* --- Utility ---------------------------------------------- */
+.hidden, [hidden] { display: none !important; }
