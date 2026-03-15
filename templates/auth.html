@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="auth-layout">
+  <article class="card auth-card">
+    <div class="section-head compact">
+      <div>
+        <p class="eyebrow">Authentication</p>
+        <h1>Access UAStream</h1>
+      </div>
+      <div class="tab-row">
+        <button class="tab active" type="button" data-auth-tab="login">Login</button>
+        <button class="tab" type="button" data-auth-tab="register">Register</button>
+      </div>
+    </div>
+
+    <div id="login-form" class="form-grid" data-auth-panel="login">
+      <p class="muted">Sign in is handled by Keycloak. You will be redirected to the institutional login page.</p>
+      <a class="button primary" href="/auth/login">Continue with Keycloak</a>
+    </div>
+
+    <form id="register-form" class="form-grid hidden" data-auth-panel="register">
+      <input name="email" type="email" placeholder="new-user@ua.pt" required>
+      <input name="password" type="password" placeholder="Password" required>
+      <input name="name" type="text" placeholder="Full name" required>
+      <div class="two-col">
+        <select name="role">
+          <option value="student">Student</option>
+          <option value="professor">Professor</option>
+        </select>
+        <input name="course" type="text" placeholder="Course">
+      </div>
+      <input name="institution" type="text" placeholder="universidade-aveiro" required>
+      <button class="button primary" type="submit">Create Account</button>
+    </form>
+
+    <p id="auth-status" class="muted">Account creation stays in UAStream, but sign-in happens in Keycloak.</p>
+  </article>
+</section>
+{% endblock %}
