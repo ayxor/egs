@@ -1,0 +1,346 @@
+openapi: 3.0.3
+
+info:
+  title: IAM Service (Keycloak)
+  version: "26.1"
+  description: |
+    Keycloak-provided identity and access management endpoints consumed by the Composer service.
+
+    This document covers only the subset of the Keycloak REST API that the Composer
+    actively calls. Keycloak is entirely agnostic to platform business logic — it has
+    no knowledge of videos, courses, or subjects. Its sole responsibilities are issuing
+    and signing JWTs, managing user credentials, and exposing the public key used by
+    the Composer to validate tokens locally without a round-trip.
+
+    **The Composer is the only service that communicates with Keycloak.**
+
+    ## Authentication model
+    The Composer calls Keycloak in three distinct roles:
+    - **On behalf of a user** — password and refresh grant flows, proxied from client requests
+    - **As a service client** — client_credentials grant to obtain an admin token before creating users
+    - **At startup** — JWKS fetch to cache the realm's public key for local JWT validation
+
+servers:
+  - url: http://keycloak:8080
+    description: Internal Docker network (Compose service name)
+
+tags:
+  - name: JWKS
+    description: Public key set — fetched once at Composer startup and cached in memory
+  - name: Token
+    description: Token issuance and refresh (all grant types share a single endpoint)
+  - name: Admin
+    description: User management via the Keycloak Admin REST API
+
+paths:
+  /realms/{realm}/protocol/openid-connect/certs:
+    get:
+      tags: [JWKS]
+      summary: Get JWKS
+      description: |
+        Returns the realm's public key set in JWKS format (RFC 7517).
+
+        Called once by the Composer at startup and cached in memory. Every subsequent
+        JWT validation uses this cached key without contacting Keycloak, so a Keycloak
+        outage after startup does not break token validation for authenticated users.
+      parameters:
+        - $ref: '#/components/parameters/realm'
+      responses:
+        '200':
+          description: JWKS payload containing one or more RSA public keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKS'
+              example:
+                keys:
+                  - kty: RSA
+                    use: sig
+                    alg: RS256
+                    kid: "3f1b2c4d-..."
+                    n: "<modulus base64url>"
+                    e: "AQAB"
+
+  /realms/{realm}/protocol/openid-connect/token:
+    post:
+      tags: [Token]
+      summary: Token endpoint
+      description: |
+        All token operations share this single endpoint. The `grant_type` field selects
+        the flow. The Composer uses three flows:
+
+        | `grant_type` | When used |
+        |---|---|
+        | `password` | User login — proxied from the Composer's `POST /auth/login` |
+        | `refresh_token` | Token refresh — proxied from `POST /auth/refresh` |
+        | `client_credentials` | Composer obtains an admin token before creating a user |
+      parameters:
+        - $ref: '#/components/parameters/realm'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/PasswordGrantRequest'
+                - $ref: '#/components/schemas/RefreshTokenGrantRequest'
+                - $ref: '#/components/schemas/ClientCredentialsGrantRequest'
+            examples:
+              user_login:
+                summary: User login (password grant)
+                value:
+                  grant_type: password
+                  client_id: egs-platform
+                  username: professor@ua.pt
+                  password: "secret"
+              token_refresh:
+                summary: Token refresh
+                value:
+                  grant_type: refresh_token
+                  client_id: egs-platform
+                  refresh_token: "eyJ..."
+              service_auth:
+                summary: Service authentication (client_credentials)
+                value:
+                  grant_type: client_credentials
+                  client_id: egs-platform
+                  client_secret: "change-me-in-production"
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Invalid or expired token (e.g. bad refresh_token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeycloakError'
+        '401':
+          description: Bad credentials or invalid client_secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeycloakError'
+
+  /admin/realms/{realm}/users:
+    post:
+      tags: [Admin]
+      summary: Create user
+      description: |
+        Creates a new user in the realm. Called by the Composer during user registration
+        (`POST /users`) after first obtaining a service token via the
+        `client_credentials` grant.
+
+        On success Keycloak returns `201 Created` with an empty body. The new user's
+        UUID is taken from the `Location` response header (last path segment).
+      parameters:
+        - $ref: '#/components/parameters/realm'
+      security:
+        - ServiceBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+            example:
+              username: professor@ua.pt
+              email: professor@ua.pt
+              enabled: true
+              credentials:
+                - type: password
+                  value: "secret"
+                  temporary: false
+              attributes:
+                role: professor
+                institution: universidade-aveiro
+      responses:
+        '201':
+          description: |
+            User created. The new user's Keycloak UUID is in the `Location` header
+            (last path segment).
+          headers:
+            Location:
+              description: Absolute URL of the created user resource
+              schema:
+                type: string
+                example: "http://keycloak:8080/admin/realms/egs/users/d4e5f6a7-..."
+        '409':
+          description: A user with this email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeycloakError'
+        '401':
+          description: Missing or invalid service Bearer token
+        '403':
+          description: Service token lacks the required admin role
+
+components:
+  parameters:
+    realm:
+      name: realm
+      in: path
+      required: true
+      description: Keycloak realm name. Must match `KEYCLOAK_REALM` in the Composer config.
+      schema:
+        type: string
+        default: egs
+        example: egs
+
+  securitySchemes:
+    ServiceBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Service-level access token obtained from Keycloak via the `client_credentials`
+        grant. Must belong to a client with the `realm-management` → `manage-users` role
+        in the `egs` realm.
+
+  schemas:
+    JWKS:
+      type: object
+      description: JSON Web Key Set (RFC 7517)
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            description: JWK entry — RSA public key in standard JWK format
+            properties:
+              kty: { type: string, example: RSA }
+              use: { type: string, example: sig }
+              alg: { type: string, example: RS256 }
+              kid: { type: string }
+              n:   { type: string, description: Modulus (base64url) }
+              e:   { type: string, description: Exponent (base64url), example: AQAB }
+
+    PasswordGrantRequest:
+      type: object
+      description: Resource Owner Password Credentials grant (RFC 6749 §4.3)
+      required: [grant_type, client_id, username, password]
+      properties:
+        grant_type:
+          type: string
+          enum: [password]
+        client_id:
+          type: string
+          example: egs-platform
+        username:
+          type: string
+          format: email
+          example: professor@ua.pt
+        password:
+          type: string
+          format: password
+
+    RefreshTokenGrantRequest:
+      type: object
+      description: Refresh Token grant (RFC 6749 §6)
+      required: [grant_type, client_id, refresh_token]
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        client_id:
+          type: string
+          example: egs-platform
+        refresh_token:
+          type: string
+
+    ClientCredentialsGrantRequest:
+      type: object
+      description: Client Credentials grant (RFC 6749 §4.4) — service-to-service
+      required: [grant_type, client_id, client_secret]
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials]
+        client_id:
+          type: string
+          example: egs-platform
+        client_secret:
+          type: string
+
+    TokenResponse:
+      type: object
+      description: Successful token response
+      properties:
+        access_token:
+          type: string
+          description: RS256-signed JWT containing user identity claims
+        refresh_token:
+          type: string
+          description: |
+            Opaque refresh token. Absent when `grant_type` is `client_credentials`.
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds
+          example: 3600
+        refresh_expires_in:
+          type: integer
+          description: Refresh token lifetime in seconds
+          example: 1800
+
+    CreateUserRequest:
+      type: object
+      required: [username, email, enabled, credentials, attributes]
+      properties:
+        username:
+          type: string
+          format: email
+          example: professor@ua.pt
+        email:
+          type: string
+          format: email
+          example: professor@ua.pt
+        enabled:
+          type: boolean
+          example: true
+        credentials:
+          type: array
+          items:
+            type: object
+            required: [type, value, temporary]
+            properties:
+              type:
+                type: string
+                enum: [password]
+              value:
+                type: string
+              temporary:
+                type: boolean
+                description: If true the user must change the password on first login
+                example: false
+        attributes:
+          type: object
+          description: |
+            Custom user attributes stored in Keycloak and included in the JWT via
+            protocol mappers configured on the `egs-platform` client.
+          required: [role, institution]
+          properties:
+            role:
+              type: string
+              enum: [professor, student]
+              description: Platform role — forwarded as the `role` JWT claim
+            institution:
+              type: string
+              example: universidade-aveiro
+              description: Institution slug — forwarded as the `institution` JWT claim
+
+    KeycloakError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: invalid_grant
+        error_description:
+          type: string
+          example: Invalid user credentials
