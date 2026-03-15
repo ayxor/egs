@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="section-head">
+  <div>
+    <p class="eyebrow">Library</p>
+    <h1>All Lectures</h1>
+  </div>
+  <form id="search-form" class="search-inline">
+    <input id="search-input" type="search" placeholder="Find by topic, course, or tag">
+    <button class="button primary" type="submit">Search</button>
+  </form>
+</section>
+
+<section class="filter-bar" id="filter-bar">
+  <button type="button" class="filter-chip active" data-filter="all">All</button>
+  <button type="button" class="filter-chip" data-filter="recent">Recent</button>
+  <button type="button" class="filter-chip" data-filter="watermarked">Watermarked</button>
+  <button type="button" class="filter-chip" data-filter="programming">Programming</button>
+</section>
+
+<section class="video-grid" id="video-grid"></section>
+{% endblock %}

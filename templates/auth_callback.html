@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="auth-layout">
+  <article class="card auth-card">
+    {% if auth_error %}
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">Authentication</p>
+          <h1>Sign In Failed</h1>
+        </div>
+      </div>
+      <p class="gate-message error">{{ auth_error }}</p>
+      <div class="hero-actions">
+        <a class="button primary" href="/auth/login">Try Again</a>
+        <a class="button ghost" href="/auth">Back</a>
+      </div>
+    {% else %}
+      <div class="section-head compact">
+        <div>
+          <p class="eyebrow">Authentication</p>
+          <h1>Finalizing your session...</h1>
+        </div>
+      </div>
+      <p class="muted">You are being signed in and redirected to your library.</p>
+      <script>
+        (function () {
+          const accessToken = {{ access_token | tojson }};
+          const refreshToken = {{ refresh_token | tojson }};
+          const idToken = {{ id_token | tojson }};
+          if (accessToken) {
+            sessionStorage.setItem("ua_access_token", accessToken);
+          }
+          if (refreshToken) {
+            sessionStorage.setItem("ua_refresh_token", refreshToken);
+          }
+          if (idToken) {
+            sessionStorage.setItem("ua_id_token", idToken);
+          }
+          window.location.replace({{ next_path | default('/library', true) | tojson }});
+        })();
+      </script>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

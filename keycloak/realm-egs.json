@@ -28,7 +28,7 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "change-me-in-production",
       "publicClient": false,
-      "standardFlowEnabled": false,
+      "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
@@ -36,7 +36,20 @@
       "alwaysDisplayInConsole": false,
       "frontchannelLogout": false,
       "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:8090/*",
+        "http://127.0.0.1:8090/*",
+        "http://localhost:8080/*",
+        "http://127.0.0.1:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8090",
+        "http://127.0.0.1:8090",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080"
+      ],
       "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8090/*##http://127.0.0.1:8090/*##http://localhost:8080/*##http://127.0.0.1:8080/*",
         "access.token.lifespan": "3600"
       },
       "protocolMappers": [

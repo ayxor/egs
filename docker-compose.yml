@@ -56,6 +56,7 @@ services:
       KC_HTTP_PORT: "8080"
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "8180:8080"
     volumes:
@@ -65,7 +66,7 @@ services:
       kc-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/realms/egs/.well-known/openid-configuration || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/health/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -77,17 +78,18 @@ services:
   composer:
     build: .
     ports:
-      - "8080:8080"
+      - "8090:8080"
     depends_on:
       db:
         condition: service_healthy
       keycloak:
-        condition: service_healthy
+        condition: service_started
     environment:
       DATABASE_URL: "postgresql://composer:composer@db:5432/composer"
 
       # Keycloak / IAM
       KEYCLOAK_URL: "http://keycloak:8080"
+      KEYCLOAK_PUBLIC_URL: "http://localhost:8180"
       KEYCLOAK_REALM: "egs"
       KEYCLOAK_CLIENT_ID: "egs-platform"
       KEYCLOAK_CLIENT_SECRET: "${KEYCLOAK_CLIENT_SECRET}"
