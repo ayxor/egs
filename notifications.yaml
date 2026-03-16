@@ -7,7 +7,7 @@ info:
     explicitly requested by the Composer.
     Accessible only by internal services via API key.
     Generic enough to be shared and reused by other projects.
-  version: 1.0.0
+  version: 1.1.0
 
 servers:
   - url: http://notifications:8080
@@ -48,6 +48,58 @@ components:
             name: Professor Diogo
             title: Aula 1 - VHDL
 
+    EmailAccepted:
+      type: object
+      properties:
+        notification_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+    NotificationRecord:
+      type: object
+      properties:
+        notification_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        to:
+          type: string
+          format: email
+          example: professor@ua.pt
+        subject:
+          type: string
+          example: Vídeo submetido com sucesso
+        template:
+          type: string
+          example: upload_complete
+        status:
+          type: string
+          enum: [sent, opened]
+          example: opened
+        sent_at:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00+00:00"
+        opened_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-01-15T11:05:00+00:00"
+        tracking_pixel:
+          type: string
+          format: uri
+          description: URL of the 1x1 tracking pixel embedded in the email HTML body.
+          example: http://notifications:8080/notifications/track/3fa85f64-5717-4562-b3fc-2c963f66afa6.gif
+
+    NotificationList:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationRecord'
+
     TemplateList:
       type: object
       properties:
@@ -82,9 +134,12 @@ paths:
     post:
       summary: Send an email
       description: >
-        Accepts an email request and queues it for delivery.
+        Accepts an email request, persists a Notification record in the database,
+        and queues the email for delivery.
         Responds with 202 Accepted because sending is asynchronous —
         the service guarantees it will attempt delivery, not that it has delivered.
+        The response body contains the notification_id, which can be used to
+        query the open/read status later via GET /notifications/{notification_id}.
       requestBody:
         required: true
         content:
@@ -94,6 +149,10 @@ paths:
       responses:
         '202':
           description: Email accepted for delivery (asynchronous)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailAccepted'
         '400':
           description: Missing or invalid required fields
           content:
@@ -102,6 +161,96 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/track/{notification_id}.gif:
+    get:
+      summary: Tracking pixel
+      description: >
+        Returns a 1x1 transparent GIF and marks the notification as opened.
+        This endpoint is called automatically by the recipient's mail client
+        when the email is opened and the HTML body is rendered.
+        Does NOT require an API key — it is accessed by external mail clients.
+        Only the first request updates the status; subsequent requests are
+        no-ops (idempotent).
+      security: []
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      responses:
+        '200':
+          description: 1x1 transparent GIF image
+          content:
+            image/gif:
+              schema:
+                type: string
+                format: binary
+
+  /notifications:
+    get:
+      summary: List all notifications
+      description: >
+        Returns all sent notifications with their current open/read status.
+        Supports optional filtering by status and recipient email.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sent, opened]
+          description: Filter by delivery/open status.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: email
+          description: Filter by recipient email address.
+      responses:
+        '200':
+          description: List of notification records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+        '400':
+          description: Invalid filter value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notifications/{notification_id}:
+    get:
+      summary: Get notification details
+      description: >
+        Returns the details and current open/read status of a specific notification.
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      responses:
+        '200':
+          description: Notification record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationRecord'
+        '404':
+          description: Notification not found
           content:
             application/json:
               schema:
