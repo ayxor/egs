@@ -3,29 +3,33 @@ Video Editor Service - Stub
 Branch: video-editor
 
 Generic, asynchronous media processing service.
-Receives a source file via URL, applies operations, delivers result to a destination URL.
-Completely agnostic to business logic — all URLs are supplied by the Composer.
+Receives a source file via URL, applies operations, and delivers the result
+to a destination URL.
 Accessible only by internal services via API key.
 
 Run:
-    pip install flask
+    pip install -r requirements.txt
     python app.py
 """
 
-from flask import Flask, request, jsonify, Response
 from datetime import datetime, timezone
+import json
+import os
 import threading
 import time
 import uuid
-import os
+
+from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
+
 
 # ---------------------------------------------------------------------------
 # API key auth
 # ---------------------------------------------------------------------------
 
 API_KEY = os.environ.get("VIDEO_EDITOR_API_KEY", "stub-api-key")
+
 
 def _require_api_key():
     key = request.headers.get("X-API-Key", "")
@@ -36,73 +40,151 @@ def _require_api_key():
 
 # ---------------------------------------------------------------------------
 # Supported operations registry
-# TODO: implement real processing with FFmpeg (or similar).
 # ---------------------------------------------------------------------------
 
 SUPPORTED_OPERATIONS: dict[str, list[str]] = {
     "watermark": ["text", "position", "opacity"],
-    "rotate":    ["degrees"],
-    "trim":      ["start", "end"],
-    "resize":    ["width", "height"],
+    "rotate": ["degrees"],
+    "trim": ["start", "end"],
+    "resize": ["width", "height"],
 }
 
 
 # ---------------------------------------------------------------------------
 # In-memory job store
-# Structure: { job_id: { status, percent, created_at, updated_at, operations } }
+# Structure: {
+#   job_id: {
+#     status, percent, created_at, updated_at, operations,
+#     generation, cancel_requested
+#   }
+# }
 # ---------------------------------------------------------------------------
 
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
-def _update_job(job_id: str, **kwargs):
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _validate_job_payload(body: dict):
+    for field in ("src_url", "dst_url", "operations"):
+        if not body.get(field):
+            return None, (jsonify({"error": f"missing required field: {field}"}), 400)
+
+    operations = body["operations"]
+    if not isinstance(operations, list) or len(operations) == 0:
+        return None, (jsonify({"error": "operations must be a non-empty list"}), 400)
+
+    for op in operations:
+        op_type = op.get("type") if isinstance(op, dict) else op
+        if op_type not in SUPPORTED_OPERATIONS:
+            return None, (jsonify({"error": f"unknown operation: {op_type}"}), 422)
+
+    return operations, None
+
+
+def _update_job_if_active(job_id: str, generation: int, **kwargs) -> bool:
     with _jobs_lock:
-        _jobs[job_id].update(kwargs)
-        _jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        job = _jobs.get(job_id)
+        if not job or job.get("generation") != generation:
+            return False
+
+        if job.get("cancel_requested"):
+            job["status"] = "cancelled"
+            job["updated_at"] = _utc_now_iso()
+            return False
+
+        job.update(kwargs)
+        job["updated_at"] = _utc_now_iso()
+        return True
 
 
-def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | None, operations: list):
+def _get_job(job_id: str) -> dict | None:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return None
+        return dict(job)
+
+
+def _create_or_replace_job(job_id: str, body: dict) -> None:
+    now = _utc_now_iso()
+
+    with _jobs_lock:
+        previous = _jobs.get(job_id)
+        generation = (previous.get("generation", 0) + 1) if previous else 1
+
+        _jobs[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "percent": 0,
+            "created_at": now,
+            "updated_at": now,
+            "operations": body["operations"],
+            "generation": generation,
+            "cancel_requested": False,
+        }
+
+    worker = threading.Thread(
+        target=_process_job,
+        args=(
+            job_id,
+            generation,
+            body["src_url"],
+            body["dst_url"],
+            body.get("progress_url"),
+            body["operations"],
+        ),
+        daemon=True,
+    )
+    worker.start()
+
+
+def _process_job(
+    job_id: str,
+    generation: int,
+    src_url: str,
+    dst_url: str,
+    progress_url: str | None,
+    operations: list,
+):
     """
     Background thread that simulates processing.
     TODO:
-      1. GET src_url  → download source bytes
-      2. Apply each operation with FFmpeg (or another library)
-      3. POST progress updates to progress_url via SSE
-      4. PUT dst_url  → upload processed bytes
+      1. GET src_url and download bytes
+      2. Apply each operation with FFmpeg (or similar)
+      3. Notify progress_url if provided
+      4. PUT output bytes into dst_url
     """
-    import urllib.request
+    _ = src_url
+    _ = dst_url
+    _ = progress_url
 
-    _update_job(job_id, status="processing", percent=0)
+    if not _update_job_if_active(job_id, generation, status="processing", percent=0):
+        return
 
     try:
-        # --- Step 1: fetch source ---
-        # TODO: replace stub sleep with real download
         time.sleep(0.5)
-        _update_job(job_id, percent=10)
+        if not _update_job_if_active(job_id, generation, percent=10):
+            return
 
-        # --- Step 2: process operations ---
         steps = len(operations) if operations else 1
-        for i, op in enumerate(operations, start=1):
+        for index, op in enumerate(operations, start=1):
             op_type = op.get("type") if isinstance(op, dict) else op
             print(f"[STUB] job={job_id} applying operation: {op_type}")
-            # TODO: invoke FFmpeg or processing library here
             time.sleep(1)
-            percent = 10 + int((i / steps) * 80)
-            _update_job(job_id, percent=percent)
+            percent = 10 + int((index / steps) * 80)
+            if not _update_job_if_active(job_id, generation, percent=percent):
+                return
 
-        # --- Step 3: deliver result ---
-        # TODO: PUT processed bytes to dst_url
         time.sleep(0.5)
-        _update_job(job_id, status="done", percent=100)
+        _update_job_if_active(job_id, generation, status="done", percent=100)
 
     except Exception as exc:
         print(f"[STUB] job={job_id} failed: {exc}")
-        with _jobs_lock:
-            current_percent = _jobs[job_id]["percent"]
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        print(f"[STUB] job={job_id} marked as failed at {current_percent}%")
+        _update_job_if_active(job_id, generation, status="failed")
 
 
 # ---------------------------------------------------------------------------
@@ -111,126 +193,132 @@ def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | No
 
 @app.route("/jobs", methods=["POST"])
 def create_job():
-    """
-    Create and start a processing job asynchronously.
-    Returns immediately with a job_id.
-    TODO: validate operations against SUPPORTED_OPERATIONS; implement _process_job.
-    """
     err = _require_api_key()
     if err:
         return err
 
-    body = request.get_json(force=True) or {}
-    for field in ("src_url", "dst_url", "operations"):
-        if not body.get(field):
-            return jsonify({"error": f"missing required field: {field}"}), 400
-
-    operations = body["operations"]
-    if not isinstance(operations, list) or len(operations) == 0:
-        return jsonify({"error": "operations must be a non-empty list"}), 400
-
-    # Validate operation types
-    for op in operations:
-        op_type = op.get("type") if isinstance(op, dict) else op
-        if op_type not in SUPPORTED_OPERATIONS:
-            return jsonify({"error": f"unknown operation: {op_type}"}), 422
+    body = request.get_json(force=True, silent=True) or {}
+    _, validation_error = _validate_job_payload(body)
+    if validation_error:
+        return validation_error
 
     job_id = f"job_{uuid.uuid4().hex[:6]}"
-    now = datetime.now(timezone.utc).isoformat()
+    _create_or_replace_job(job_id, body)
+    return jsonify({"job_id": job_id}), 202
+
+
+@app.route("/jobs/<job_id>", methods=["PUT"])
+def upsert_job(job_id):
+    err = _require_api_key()
+    if err:
+        return err
+
+    body = request.get_json(force=True, silent=True) or {}
+    _, validation_error = _validate_job_payload(body)
+    if validation_error:
+        return validation_error
+
+    _create_or_replace_job(job_id, body)
+    return jsonify({"job_id": job_id}), 202
+
+
+@app.route("/jobs/<job_id>", methods=["DELETE"])
+def cancel_job(job_id):
+    err = _require_api_key()
+    if err:
+        return err
 
     with _jobs_lock:
-        _jobs[job_id] = {
-            "job_id":     job_id,
-            "status":     "queued",
-            "percent":    0,
-            "created_at": now,
-            "updated_at": now,
-            "operations": operations,
-        }
+        job = _jobs.get(job_id)
+        if not job:
+            return jsonify({"error": "job not found"}), 404
 
-    # Start processing in background thread
-    t = threading.Thread(
-        target=_process_job,
-        args=(job_id, body["src_url"], body["dst_url"], body.get("progress_url"), operations),
-        daemon=True,
-    )
-    t.start()
+        if job["status"] not in ("done", "failed", "cancelled"):
+            job["cancel_requested"] = True
+            job["status"] = "cancelled"
+            job["updated_at"] = _utc_now_iso()
 
-    return jsonify({"job_id": job_id}), 202
+    return "", 204
 
 
 @app.route("/jobs/operations", methods=["GET"])
 def list_operations():
-    """Return all operations supported by this service instance."""
     err = _require_api_key()
     if err:
         return err
 
-    ops = [
+    operations = [
         {"type": op_type, "params": params}
         for op_type, params in SUPPORTED_OPERATIONS.items()
     ]
-    return jsonify({"operations": ops}), 200
+    return jsonify({"operations": operations}), 200
 
 
 @app.route("/jobs/<job_id>", methods=["GET"])
 def get_job(job_id):
-    """
-    Return the current status and progress of a job.
-    Alternative to SSE for contexts where streaming is not viable.
-    """
     err = _require_api_key()
     if err:
         return err
 
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "job not found"}), 404
 
-    return jsonify({
-        "job_id":     job["job_id"],
-        "status":     job["status"],
-        "percent":    job["percent"],
-        "created_at": job["created_at"],
-        "updated_at": job["updated_at"],
-    }), 200
+    return (
+        jsonify(
+            {
+                "job_id": job["job_id"],
+                "status": job["status"],
+                "percent": job["percent"],
+                "created_at": job["created_at"],
+                "updated_at": job["updated_at"],
+            }
+        ),
+        200,
+    )
 
 
 @app.route("/jobs/<job_id>/progress", methods=["GET"])
 def job_progress_sse(job_id):
-    """
-    Stream real-time job progress via Server-Sent Events.
-    The Composer subscribes to this stream and relays progress to the client.
-    Stream closes automatically when the job reaches 'done' or 'failed'.
-    """
     err = _require_api_key()
     if err:
         return err
 
-    if job_id not in _jobs:
+    if not _get_job(job_id):
         return jsonify({"error": "job not found"}), 404
 
     def sse_generator():
         while True:
-            job = _jobs.get(job_id, {})
-            status  = job.get("status", "unknown")
-            percent = job.get("percent", 0)
-            yield f'data: {{"job_id": "{job_id}", "percent": {percent}, "status": "{status}"}}\n\n'
-            if status in ("done", "failed"):
+            job = _get_job(job_id)
+            if not job:
                 break
+
+            payload = {
+                "job_id": job_id,
+                "percent": job.get("percent", 0),
+                "status": job.get("status", "unknown"),
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+
+            if payload["status"] in ("done", "failed", "cancelled"):
+                break
+
             time.sleep(0.5)
 
-    return Response(sse_generator(), mimetype="text/event-stream")
+    return Response(
+        sse_generator(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.route("/jobs/<job_id>/operations", methods=["GET"])
 def get_job_operations(job_id):
-    """Return the operations that were requested for a specific job."""
     err = _require_api_key()
     if err:
         return err
 
-    job = _jobs.get(job_id)
+    job = _get_job(job_id)
     if not job:
         return jsonify({"error": "job not found"}), 404
 

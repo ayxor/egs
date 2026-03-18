@@ -1,168 +1,129 @@
 # Video Editor Service
 
-The Video Editor service is a generic, asynchronous media processing service. It receives a source file via a URL, applies a sequence of requested operations, and delivers the result to a destination URL. It has no knowledge of users, institutions, the Object Storage service, or any other platform component.
+Servico interno de processamento assincrono de media.
 
-All URLs are provided by the Composer at request time, guaranteeing total loose coupling. The Video Editor does not care whether those URLs point to Object Storage, the Composer itself, or any other system.
+O Video Editor recebe um recurso por URL, aplica operacoes, e escreve o resultado
+noutra URL. O servico e agnostico ao negocio da plataforma e autenticado por API key.
 
-**This service is accessible only by internal services via API key.**
+## Contrato da API
 
----
+O contrato oficial esta documentado em `video-editor.yaml` (OpenAPI 3.0.3).
+Este README resume o mesmo contrato para consulta rapida.
 
-## Processing Model
+Base URL (local): `http://localhost:8080`
 
-1. The Composer submits a job with `src_url`, `dst_url`, `progress_url`, and `operations`.
-2. The Video Editor fetches the source file via `GET src_url`.
-3. It processes the file according to the specified operations.
-4. It streams progress updates to `progress_url` via SSE.
-5. It delivers the processed file via `PUT dst_url`.
+Header obrigatorio em todos os endpoints:
 
----
+```http
+X-API-Key: <key>
+```
 
-## API Reference
+## Endpoints
 
-Base URL: `http://video-editor:8080`
-
-All requests must include the header `X-API-Key: <key>`.
-
-### Jobs
-
-| Method | Path | Description |
+| Metodo | Path | Descricao |
 |---|---|---|
-| `POST` | `/jobs` | Create and start a new processing job. |
-| `GET` | `/jobs/{job_id}` | Poll the current status of a job. |
-| `GET` | `/jobs/{job_id}/progress` | Stream real-time job progress via SSE. |
-| `GET` | `/jobs/{job_id}/operations` | Retrieve the operations applied to a specific job. |
-| `GET` | `/jobs/operations` | List all operations supported by this service. |
+| POST | /jobs | Criar job com id gerado pelo servico |
+| PUT | /jobs/{job_id} | Criar/substituir job com id fixo (idempotencia) |
+| DELETE | /jobs/{job_id} | Cancelar job |
+| GET | /jobs/{job_id} | Obter estado e progresso do job |
+| GET | /jobs/{job_id}/progress | Stream SSE de progresso |
+| GET | /jobs/{job_id}/operations | Operacoes pedidas para o job |
+| GET | /jobs/operations | Operacoes suportadas por esta instancia |
 
----
+## Modelo de request
 
-**POST /jobs**
+### POST /jobs e PUT /jobs/{job_id}
 
-Creates a processing job and starts it asynchronously. Returns immediately with a `job_id`.
-
-Request body:
 ```json
 {
-  "src_url": "https://object-storage/objects/universidade-aveiro/raw/abc123.mp4?token=...",
-  "dst_url": "https://object-storage/objects/universidade-aveiro/processed/abc123.mp4?token=...",
-  "progress_url": "https://composer/internal/jobs/progress",
-  "operations": [
-    {
-      "type": "watermark",
-      "params": {
-        "text": "UA",
-        "position": "bottom-right",
-        "opacity": 0.8
-      }
-    }
-  ]
+	"src_url": "https://storage/raw/abc123.mp4",
+	"dst_url": "https://storage/processed/abc123.mp4",
+	"progress_url": "https://composer/internal/jobs/progress",
+	"operations": [
+		{
+			"type": "watermark",
+			"params": {
+				"text": "UA",
+				"position": "bottom-right",
+				"opacity": 0.8
+			}
+		}
+	]
 }
 ```
 
-| Field | Required | Description |
-|---|---|---|
-| `src_url` | Yes | HTTP URL from which to fetch the source file (GET) |
-| `dst_url` | Yes | HTTP URL to which to deliver the processed file (PUT) |
-| `progress_url` | No | HTTP URL to which to POST SSE progress updates |
-| `operations` | Yes | Ordered list of operations to apply |
+Campos obrigatorios:
 
-| Response | Description |
-|---|---|
-| `202 Accepted` | `{ "job_id": "job_7f3a1b" }` — job started asynchronously |
-| `400 Bad Request` | Missing or invalid required fields |
-| `422 Unprocessable Entity` | Unknown or unsupported operation type |
+- src_url
+- dst_url
+- operations (lista nao vazia)
 
----
+## Estado do job
 
-**GET /jobs/{job_id}**
+Resposta de GET /jobs/{job_id}:
 
-Returns the current status of a job. Use this as an alternative to SSE in contexts where streaming is not viable.
-
-| Response | Description |
-|---|---|
-| `200 OK` | Job status object (see below) |
-| `404 Not Found` | Job does not exist |
-
-Response body:
 ```json
 {
-  "job_id": "job_7f3a1b",
-  "status": "processing",
-  "percent": 45,
-  "created_at": "2024-03-01T10:00:00Z",
-  "updated_at": "2024-03-01T10:01:23Z"
+	"job_id": "job_7f3a1b",
+	"status": "processing",
+	"percent": 45,
+	"created_at": "2026-03-17T10:00:00Z",
+	"updated_at": "2026-03-17T10:01:23Z"
 }
 ```
 
-Status values: `queued` · `processing` · `done` · `failed`
+Estados possiveis:
 
----
+- queued
+- processing
+- done
+- failed
+- cancelled
 
-**GET /jobs/{job_id}/progress**
+## Codigos HTTP esperados
 
-Opens a Server-Sent Events stream that emits real-time progress updates. The stream closes automatically when the job reaches `done` or `failed`.
+- 200 OK: leitura com sucesso
+- 202 Accepted: job aceite para processamento assincrono
+- 204 No Content: cancelamento aceite
+- 400 Bad Request: payload invalido ou campos em falta
+- 401 Unauthorized: API key invalida ou em falta
+- 404 Not Found: job inexistente
+- 422 Unprocessable Entity: operacao desconhecida/nao suportada
 
-`Content-Type: text/event-stream`
+## Notas de design
 
-```
-data: {"job_id": "job_7f3a1b", "percent": 0, "status": "started"}
+- O servico gere jobs de processamento e nao ownership de ficheiros de video.
+- Por isso, nao existe CRUD de `/videos` neste microservico.
+- `POST /jobs` cria novo job com id gerado pelo servico.
+- `PUT /jobs/{job_id}` permite retries idempotentes com id controlado pelo caller.
+- `DELETE /jobs/{job_id}` cancela jobs queued/processing.
 
-data: {"job_id": "job_7f3a1b", "percent": 45, "status": "processing"}
-
-data: {"job_id": "job_7f3a1b", "percent": 100, "status": "done"}
-```
-
-| Response | Description |
-|---|---|
-| `200 OK` | SSE stream opened |
-| `404 Not Found` | Job does not exist |
-
----
-
-**GET /jobs/operations**
-
-Returns the full list of operations supported by this service instance, along with their available parameters.
-
-Response `200 OK`:
-```json
-{
-  "operations": [
-    { "type": "watermark", "params": ["text", "position", "opacity"] },
-    { "type": "rotate", "params": ["degrees"] },
-    { "type": "trim", "params": ["start", "end"] },
-    { "type": "resize", "params": ["width", "height"] }
-  ]
-}
-```
-
----
-
-**GET /jobs/{job_id}/operations**
-
-Returns the operations that were requested for a specific job.
-
-| Response | Description |
-|---|---|
-| `200 OK` | Operations applied to the job |
-| `404 Not Found` | Job does not exist |
-
----
-
-## Deployment
-
-### Run locally
+## Como correr
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-python app.py   # listens on :8080
+python3 app.py
 ```
 
-### Environment variables
+API key custom (opcional):
 
-| Variable | Description |
-|---|---|
-| `VIDEO_EDITOR_API_KEY` | Shared secret expected in the `X-API-Key` header (default: `stub-api-key`) |
+```bash
+export VIDEO_EDITOR_API_KEY="my-key"
+python3 app.py
+```
 
-### Docker
+## Como testar
 
-> To be completed.
+```bash
+chmod +x test.sh
+./test.sh
+```
+
+Se estiver tudo correto, o script termina com:
+
+```text
+All tests passed.
+```
+
