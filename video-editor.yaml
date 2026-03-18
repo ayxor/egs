@@ -26,6 +26,12 @@ components:
       type: object
       required: [src_url, dst_url, operations]
       properties:
+        resource_id:
+          type: string
+          description: >
+            Optional caller-defined resource identifier used to persist a generic
+            resource processing state mapping in the service database.
+          example: resource_abc123
         src_url:
           type: string
           description: HTTP URL from which the service fetches the source file.
@@ -118,14 +124,106 @@ components:
               params:
                 type: object
 
+    DatabaseStatus:
+      type: object
+      properties:
+        database:
+          type: string
+          example: sqlite
+        status:
+          type: string
+          example: ok
+        path:
+          type: string
+          example: video_editor.db
+        meta_entries:
+          type: integer
+          example: 2
+        resource_state_entries:
+          type: integer
+          example: 1
+
+    ResourceProcessingState:
+      type: object
+      properties:
+        resource_id:
+          type: string
+          example: resource_abc123
+        processing_state:
+          type: string
+          enum: [queued, processing, done, failed, cancelled]
+          example: processing
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-03-18T00:00:00Z
+
     Error:
       type: object
       properties:
         error:
           type: string
           example: job not found
+        details:
+          type: string
+          nullable: true
+          example: unable to open database file
 
 paths:
+  /db/status:
+    get:
+      summary: Check database status
+      description: Returns status information for the service SQLite database.
+      responses:
+        '200':
+          description: Database status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseStatus'
+        '401':
+          description: Missing or invalid API key
+        '500':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /resources/{resource_id}/state:
+    get:
+      summary: Get processing state by resource id
+      description: >
+        Returns the persisted processing state associated with a resource_id.
+        This mapping is generic and platform-agnostic.
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resource processing state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceProcessingState'
+        '401':
+          description: Missing or invalid API key
+        '404':
+          description: Resource state not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /jobs:
     post:
       summary: Create a processing job

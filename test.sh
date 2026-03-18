@@ -31,6 +31,33 @@ echo "Running Video Editor API status tests against $BASE"
 # No API key -> 401
 request_code "401" "POST /jobs without API key" -X POST "$BASE/jobs" || exit 1
 
+# DB status without API key -> 401
+request_code "401" "GET /db/status without API key" "$BASE/db/status" || exit 1
+
+# DB status with API key -> 200
+request_code "200" "GET /db/status" \
+  -H "X-API-Key: $KEY" "$BASE/db/status" || exit 1
+
+# Resource state without API key -> 401
+request_code "401" "GET /resources/{resource_id}/state without API key" \
+  "$BASE/resources/resource_demo_001/state" || exit 1
+
+RESOURCE_DB_ID="resource_demo_001"
+
+# Valid create job with resource_id -> 202
+request_code "202" "POST /jobs valid with resource_id" \
+  -X POST "$BASE/jobs" \
+  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"resource_id":"resource_demo_001","src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4","operations":[{"type":"rotate","params":{"degrees":90}}]}' || exit 1
+
+# Get existing resource state -> 200
+request_code "200" "GET /resources/{resource_id}/state" \
+  -H "X-API-Key: $KEY" "$BASE/resources/$RESOURCE_DB_ID/state" || exit 1
+
+# Get missing resource state -> 404
+request_code "404" "GET /resources/resource_inexistente/state" \
+  -H "X-API-Key: $KEY" "$BASE/resources/resource_inexistente/state" || exit 1
+
 # List supported operations -> 200
 request_code "200" "GET /jobs/operations" \
   -H "X-API-Key: $KEY" "$BASE/jobs/operations" || exit 1
