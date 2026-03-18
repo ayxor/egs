@@ -3,12 +3,12 @@ info:
   title: Object Storage Service
   description: >
     Generic file storage service. Completely agnostic to content type.
-    Accepts, serves, and generates presigned URLs for any binary object.
+    Accepts and serves any binary object.
     Accessible only by internal services (Composer, Video Editor) via API key.
   version: 1.0.0
 
 servers:
-  - url: http://object-storage:8080
+  - url: http://object-storage:5000
     description: Internal service
 
 security:
@@ -32,36 +32,54 @@ components:
           type: string
           example: raw/abc123.mp4
 
-    PresignRequest:
-      type: object
-      required: [method, expires_in]
-      properties:
-        method:
-          type: string
-          enum: [GET, PUT]
-          example: GET
-        expires_in:
-          type: integer
-          description: Expiry duration in seconds
-          example: 3600
-
-    PresignResponse:
-      type: object
-      properties:
-        url:
-          type: string
-          example: http://object-storage:8080/objects/universidade-aveiro/raw/abc123.mp4?token=xyz&expires=...
-        expires_at:
-          type: string
-          format: date-time
-          example: 2024-03-01T11:00:00Z
-
     BucketCreated:
       type: object
       properties:
         bucket:
           type: string
           example: universidade-aveiro
+
+    BucketListResponse:
+      type: object
+      properties:
+        buckets:
+          type: array
+          items:
+            type: string
+          example: ["universidade-aveiro"]
+        total:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
+        query:
+          type: string
+          example: ""
+
+    ObjectListResponse:
+      type: object
+      properties:
+        objects:
+          type: array
+          items:
+            type: string
+          example: ["raw/abc123.mp4"]
+        total:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
+        query:
+          type: string
+          example: ""
 
     Error:
       type: object
@@ -71,6 +89,40 @@ components:
           example: bucket or key not found
 
 paths:
+
+  /buckets:
+    get:
+      summary: List all buckets
+      description: Returns a paginated list of all created buckets (namespaces), optionally filtered by a substring query.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Max number of buckets to return.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Number of buckets to skip.
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            default: ""
+          description: Substring match for bucket names.
+      responses:
+        '200':
+          description: A list of buckets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BucketListResponse'
 
   /buckets/{bucket}:
     put:
@@ -117,12 +169,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /objects/{bucket}/{key}:
+  /objects/{bucket}:
+    get:
+      summary: List all objects in a bucket
+      description: Returns a paginated list of object keys inside a given bucket, optionally filtered by a substring query.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Max number of object keys to return.
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Number of object keys to skip.
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            default: ""
+          description: Substring match for object keys.
+      responses:
+        '200':
+          description: A list of object keys in the bucket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectListResponse'
+        '404':
+          description: Bucket not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
     put:
       summary: Upload an object
       description: >
-        Stores a binary object under the given bucket and key.
-        The service is agnostic to content type.
+        Stores a binary object in the given bucket.
+        Object key is provided via query parameter `key`.
       parameters:
         - name: bucket
           in: path
@@ -131,7 +228,7 @@ paths:
             type: string
           example: universidade-aveiro
         - name: key
-          in: path
+          in: query
           required: true
           schema:
             type: string
@@ -157,6 +254,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+    delete:
+      summary: Delete an object
+      description: Removes an object from the given bucket. Object key is provided via query parameter `key`.
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          example: universidade-aveiro
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+          example: raw/abc123.mp4
+      responses:
+        '204':
+          description: Object deleted successfully
+        '400':
+          description: Invalid bucket or key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Bucket or key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /objects/{bucket}/{key}:
     get:
       summary: Download an object
       description: >
@@ -205,69 +335,3 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-    delete:
-      summary: Delete an object
-      description: Removes an object from the given bucket.
-      parameters:
-        - name: bucket
-          in: path
-          required: true
-          schema:
-            type: string
-          example: universidade-aveiro
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          example: raw/abc123.mp4
-      responses:
-        '204':
-          description: Object deleted successfully
-        '404':
-          description: Bucket or key not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /objects/{bucket}/{key}/presign:
-    post:
-      summary: Generate a presigned URL
-      description: >
-        Generates a temporary, scoped URL for direct access to an object.
-        The URL can be for GET (download) or PUT (upload).
-        PUT presigned URLs are used by the Composer to provide the Video Editor
-        with a destination to upload processed files directly.
-      parameters:
-        - name: bucket
-          in: path
-          required: true
-          schema:
-            type: string
-          example: universidade-aveiro
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          example: processed/abc123.mp4
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PresignRequest'
-      responses:
-        '200':
-          description: Presigned URL generated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PresignResponse'
-        '404':
-          description: Bucket or key not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
