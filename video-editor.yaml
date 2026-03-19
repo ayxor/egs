@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Video Editor Service
   description: >
-    Generic media processing service. Receives a resource via URL, applies
+    Generic media processing service. Receives an uploaded source file, applies
     requested operations, and delivers the result to a destination URL.
     Accessible only by internal services via API key.
   version: 1.0.0
@@ -22,16 +22,46 @@ components:
       name: X-API-Key
 
   schemas:
-    JobRequest:
+    JobOperation:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          example: watermark
+        params:
+          type: object
+          description: Operation-specific parameters.
+          example:
+            text: UA
+            position: bottom-right
+            opacity: 0.8
+
+    JobCreateRequest:
+      type: object
+      required: [file, dst_url, operations]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Source file uploaded by the caller.
+        dst_url:
+          type: string
+          description: HTTP URL to which the service uploads the processed file.
+          example: https://storage/processed/abc123.mp4
+        progress_url:
+          type: string
+          description: Optional callback URL for progress notifications.
+          example: https://composer/internal/jobs/progress
+        operations:
+          type: string
+          description: JSON-encoded array of operations to apply.
+          example: '[{"type":"watermark","params":{"text":"UA","position":"bottom-right","opacity":0.8}}]'
+
+    JobUpsertRequest:
       type: object
       required: [src_url, dst_url, operations]
       properties:
-        resource_id:
-          type: string
-          description: >
-            Optional caller-defined resource identifier used to persist a generic
-            resource processing state mapping in the service database.
-          example: resource_abc123
         src_url:
           type: string
           description: HTTP URL from which the service fetches the source file.
@@ -48,19 +78,7 @@ components:
           type: array
           description: Ordered list of operations to apply.
           items:
-            type: object
-            required: [type]
-            properties:
-              type:
-                type: string
-                example: watermark
-              params:
-                type: object
-                description: Operation-specific parameters.
-                example:
-                  text: UA
-                  position: bottom-right
-                  opacity: 0.8
+            $ref: '#/components/schemas/JobOperation'
 
     JobCreated:
       type: object
@@ -68,6 +86,15 @@ components:
         job_id:
           type: string
           example: job_7f3a1b
+
+    JobProgress:
+      type: object
+      properties:
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 45
 
     JobStatus:
       type: object
@@ -84,6 +111,23 @@ components:
           minimum: 0
           maximum: 100
           example: 45
+        progress:
+          $ref: '#/components/schemas/JobProgress'
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/JobOperation'
+        source_ref:
+          type: string
+          example: upload://my-video.mp4
+        source_file_name:
+          type: string
+          nullable: true
+          example: my-video.mp4
+        source_file_mime_type:
+          type: string
+          nullable: true
+          example: video/mp4
         created_at:
           type: string
           format: date-time
@@ -110,20 +154,6 @@ components:
                   type: string
                 example: [text, position, opacity]
 
-    JobOperations:
-      type: object
-      properties:
-        operations:
-          type: array
-          items:
-            type: object
-            properties:
-              type:
-                type: string
-                example: watermark
-              params:
-                type: object
-
     DatabaseStatus:
       type: object
       properties:
@@ -139,24 +169,6 @@ components:
         meta_entries:
           type: integer
           example: 2
-        resource_state_entries:
-          type: integer
-          example: 1
-
-    ResourceProcessingState:
-      type: object
-      properties:
-        resource_id:
-          type: string
-          example: resource_abc123
-        processing_state:
-          type: string
-          enum: [queued, processing, done, failed, cancelled]
-          example: processing
-        updated_at:
-          type: string
-          format: date-time
-          example: 2026-03-18T00:00:00Z
 
     Error:
       type: object
@@ -190,52 +202,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /resources/{resource_id}/state:
-    get:
-      summary: Get processing state by resource id
-      description: >
-        Returns the persisted processing state associated with a resource_id.
-        This mapping is generic and platform-agnostic.
-      parameters:
-        - name: resource_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Resource processing state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ResourceProcessingState'
-        '401':
-          description: Missing or invalid API key
-        '404':
-          description: Resource state not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          description: Database unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
   /jobs:
     post:
       summary: Create a processing job
       description: >
-        Accepts a processing request and starts the job asynchronously.
-        Returns immediately with a job_id.
+        Accepts an uploaded source file and starts the job asynchronously.
+        Returns immediately with a job_id generated by the service.
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: '#/components/schemas/JobRequest'
+              $ref: '#/components/schemas/JobCreateRequest'
       responses:
         '202':
           description: Job accepted and started
@@ -312,7 +290,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/JobRequest'
+              $ref: '#/components/schemas/JobUpsertRequest'
       responses:
         '202':
           description: Job accepted and started
@@ -348,56 +326,6 @@ paths:
       responses:
         '204':
           description: Job cancellation accepted
-        '401':
-          description: Missing or invalid API key
-        '404':
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /jobs/{job_id}/operations:
-    get:
-      summary: Get operations for a specific job
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Operations requested for this job
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JobOperations'
-        '401':
-          description: Missing or invalid API key
-        '404':
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /jobs/{job_id}/progress:
-    get:
-      summary: Stream job progress via SSE
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: SSE stream opened
-          content:
-            text/event-stream:
-              schema:
-                type: string
         '401':
           description: Missing or invalid API key
         '404':

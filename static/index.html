@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Editor Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-top: #f8fbff;
+      --bg-bottom: #edf4f7;
+      --ink: #13203a;
+      --ink-soft: #4e5c75;
+      --card: rgba(255, 255, 255, 0.8);
+      --line: rgba(19, 32, 58, 0.12);
+      --brand: #0b6d8f;
+      --brand-strong: #094f6f;
+      --ok: #0f8b54;
+      --warn: #bf4d00;
+      --bad: #c2362b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 10%, #d7ecff 0, transparent 28%),
+        radial-gradient(circle at 90% 0%, #d0f0ea 0, transparent 25%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+      min-height: 100vh;
+      padding: 28px 16px;
+    }
+
+    .shell {
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel {
+      backdrop-filter: blur(8px);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 12px 40px rgba(19, 32, 58, 0.08);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 3.6vw, 2.2rem);
+      letter-spacing: -0.01em;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--ink-soft);
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-top: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      color: var(--ink-soft);
+      margin-bottom: 6px;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      font: inherit;
+      color: inherit;
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 118px;
+      resize: vertical;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.87rem;
+    }
+
+    .actions {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+    }
+
+    button {
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+      background: var(--brand);
+      color: #fff;
+      border: none;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 7px 18px rgba(11, 109, 143, 0.26);
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    button.danger {
+      background: #fff4f2;
+      color: var(--bad);
+      border: 1px solid rgba(194, 54, 43, 0.25);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .status-card {
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.65);
+    }
+
+    .status-title {
+      margin: 0;
+      font-size: 0.82rem;
+      color: var(--ink-soft);
+    }
+
+    .status-value {
+      margin: 4px 0 0;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.95rem;
+      word-break: break-word;
+    }
+
+    .progress-wrap {
+      margin-top: 14px;
+      width: 100%;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      overflow: hidden;
+      height: 16px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, #1c89ab, #25b6c3);
+      transition: width 240ms ease;
+    }
+
+    pre {
+      margin: 12px 0 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0b1325;
+      color: #c6d6ff;
+      padding: 12px;
+      min-height: 170px;
+      max-height: 260px;
+      overflow: auto;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.82rem;
+      line-height: 1.4;
+    }
+
+    .footnote {
+      margin-top: 8px;
+      font-size: 0.82rem;
+      color: var(--ink-soft);
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 18px 10px;
+      }
+
+      .panel {
+        padding: 14px;
+        border-radius: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="panel">
+      <div class="grid">
+        <div>
+          <label for="apiKey">X-API-Key</label>
+          <input id="apiKey" value="stub-api-key" autocomplete="off">
+        </div>
+        <div>
+          <label for="sourceFile">Ficheiro origem</label>
+          <input id="sourceFile" type="file" accept="video/*">
+        </div>
+        <div>
+          <label for="dstUrl">dst_url</label>
+          <input id="dstUrl" value="https://storage/processed/abc123.mp4" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="operationType">Tipo de operacao</label>
+          <select id="operationType"></select>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <label for="operationParams">Parametros da operacao (JSON object)</label>
+          <textarea id="operationParams">{
+  "degrees": 90
+}</textarea>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="btnOps" class="secondary" type="button">Carregar operacoes</button>
+        <button id="btnDb" class="secondary" type="button">Ver db status</button>
+        <button id="btnCreate" type="button">Criar job</button>
+        <button id="btnCancel" class="danger" type="button">Cancelar job atual</button>
+      </div>
+
+      <p class="footnote">A pagina usa os endpoints /jobs, /jobs/operations, /jobs/{job_id} e /db/status.</p>
+    </section>
+
+    <section class="panel">
+      <div class="status-grid">
+        <div class="status-card">
+          <p class="status-title">job_id</p>
+          <p class="status-value" id="jobId">-</p>
+        </div>
+        <div class="status-card">
+          <p class="status-title">status</p>
+          <p class="status-value" id="jobStatus">-</p>
+        </div>
+        <div class="status-card">
+          <p class="status-title">percent</p>
+          <p class="status-value" id="jobPercent">0%</p>
+        </div>
+        <div class="status-card">
+          <p class="status-title">updated_at</p>
+          <p class="status-value" id="jobUpdated">-</p>
+        </div>
+      </div>
+
+      <div class="progress-wrap" aria-label="progress bar">
+        <div id="progressBar" class="progress-bar"></div>
+      </div>
+
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <script>
+    const terminalStatuses = new Set(["done", "failed", "cancelled"]);
+    const operationCatalog = {};
+
+    const elements = {
+      apiKey: document.getElementById("apiKey"),
+      sourceFile: document.getElementById("sourceFile"),
+      dstUrl: document.getElementById("dstUrl"),
+      operationType: document.getElementById("operationType"),
+      operationParams: document.getElementById("operationParams"),
+      btnOps: document.getElementById("btnOps"),
+      btnDb: document.getElementById("btnDb"),
+      btnCreate: document.getElementById("btnCreate"),
+      btnCancel: document.getElementById("btnCancel"),
+      jobId: document.getElementById("jobId"),
+      jobStatus: document.getElementById("jobStatus"),
+      jobPercent: document.getElementById("jobPercent"),
+      jobUpdated: document.getElementById("jobUpdated"),
+      progressBar: document.getElementById("progressBar"),
+      log: document.getElementById("log")
+    };
+
+    let activeJobId = "";
+    let pollTimer = null;
+
+    function appendLog(message) {
+      const now = new Date().toLocaleTimeString();
+      elements.log.textContent += `[${now}] ${message}\n`;
+      elements.log.scrollTop = elements.log.scrollHeight;
+    }
+
+    function updateProgress(status, percent) {
+      const safePercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+      elements.jobStatus.textContent = status || "-";
+      elements.jobPercent.textContent = `${safePercent}%`;
+      elements.progressBar.style.width = `${safePercent}%`;
+
+      if (status === "done") {
+        elements.progressBar.style.background = "linear-gradient(90deg, #0f8b54, #3ac07a)";
+      } else if (status === "failed" || status === "cancelled") {
+        elements.progressBar.style.background = "linear-gradient(90deg, #b73027, #d74f45)";
+      } else {
+        elements.progressBar.style.background = "linear-gradient(90deg, #1c89ab, #25b6c3)";
+      }
+    }
+
+    function stopPolling() {
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function getApiKey() {
+      return elements.apiKey.value.trim();
+    }
+
+    async function requestApi(path, options = {}) {
+      const key = getApiKey();
+      if (!key) {
+        throw new Error("Define uma API key antes de chamar a API.");
+      }
+
+      const requestBody = options.body;
+      const isFormData = requestBody instanceof FormData;
+
+      const headers = {
+        "X-API-Key": key,
+        ...(options.headers || {})
+      };
+
+      if (requestBody !== undefined && !isFormData) {
+        headers["Content-Type"] = "application/json";
+      }
+
+      const response = await fetch(path, {
+        method: options.method || "GET",
+        headers,
+        body: requestBody === undefined
+          ? undefined
+          : (isFormData ? requestBody : JSON.stringify(requestBody))
+      });
+
+      const raw = await response.text();
+      let data = null;
+
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = raw;
+        }
+      }
+
+      if (!response.ok) {
+        const detail = data && typeof data === "object" ? (data.error || JSON.stringify(data)) : (raw || response.statusText);
+        throw new Error(`${response.status}: ${detail}`);
+      }
+
+      return data;
+    }
+
+    function updateDefaultParams() {
+      const selected = elements.operationType.value;
+      const paramNames = operationCatalog[selected] || [];
+      const sample = {};
+
+      for (const name of paramNames) {
+        sample[name] = "";
+      }
+
+      elements.operationParams.value = JSON.stringify(sample, null, 2);
+    }
+
+    async function loadOperations() {
+      try {
+        const data = await requestApi("/jobs/operations");
+        const operations = Array.isArray(data && data.operations) ? data.operations : [];
+
+        elements.operationType.innerHTML = "";
+        for (const op of operations) {
+          if (!op || !op.type) {
+            continue;
+          }
+          operationCatalog[op.type] = Array.isArray(op.params) ? op.params : [];
+          const option = document.createElement("option");
+          option.value = op.type;
+          option.textContent = `${op.type} (${operationCatalog[op.type].join(", ") || "sem params"})`;
+          elements.operationType.appendChild(option);
+        }
+
+        if (operations.length > 0) {
+          updateDefaultParams();
+        }
+
+        appendLog(`Operacoes disponiveis: ${operations.map((o) => o.type).join(", ")}`);
+      } catch (error) {
+        appendLog(`Erro ao carregar operacoes: ${error.message}`);
+      }
+    }
+
+    async function refreshJobStatus() {
+      if (!activeJobId) {
+        return;
+      }
+
+      try {
+        const data = await requestApi(`/jobs/${encodeURIComponent(activeJobId)}`);
+        const percent = data.progress && typeof data.progress === "object"
+          ? Number(data.progress.percent)
+          : Number(data.percent);
+        elements.jobId.textContent = data.job_id || activeJobId;
+        elements.jobUpdated.textContent = data.updated_at || "-";
+        updateProgress(data.status || "unknown", percent);
+
+        if (terminalStatuses.has(data.status)) {
+          stopPolling();
+          appendLog(`Job ${activeJobId} terminou com status ${data.status}.`);
+        }
+      } catch (error) {
+        appendLog(`Erro ao ler estado do job: ${error.message}`);
+        stopPolling();
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      pollTimer = window.setInterval(refreshJobStatus, 800);
+      refreshJobStatus();
+    }
+
+    async function createJob() {
+      try {
+        const operationType = elements.operationType.value;
+        if (!operationType) {
+          throw new Error("Escolhe uma operacao.");
+        }
+
+        const sourceFile = elements.sourceFile.files && elements.sourceFile.files[0];
+        if (!sourceFile) {
+          throw new Error("Escolhe o ficheiro de origem.");
+        }
+
+        const dstUrl = elements.dstUrl.value.trim();
+        if (!dstUrl) {
+          throw new Error("Define o dst_url.");
+        }
+
+        let params = {};
+        const rawParams = elements.operationParams.value.trim();
+        if (rawParams) {
+          params = JSON.parse(rawParams);
+        }
+
+        if (!params || typeof params !== "object" || Array.isArray(params)) {
+          throw new Error("Os parametros devem ser um JSON object.");
+        }
+
+        const operations = [
+          {
+            type: operationType,
+            params
+          }
+        ];
+
+        const formData = new FormData();
+        formData.append("file", sourceFile);
+        formData.append("dst_url", dstUrl);
+        formData.append("operations", JSON.stringify(operations));
+
+        const data = await requestApi("/jobs", { method: "POST", body: formData });
+        activeJobId = data.job_id;
+        elements.jobId.textContent = activeJobId;
+        elements.jobStatus.textContent = "queued";
+        elements.jobUpdated.textContent = "-";
+        updateProgress("queued", 0);
+        appendLog(`Job criado com id ${activeJobId}.`);
+        startPolling();
+      } catch (error) {
+        appendLog(`Erro ao criar job: ${error.message}`);
+      }
+    }
+
+    async function cancelCurrentJob() {
+      if (!activeJobId) {
+        appendLog("Nao existe job ativo para cancelar.");
+        return;
+      }
+
+      try {
+        await requestApi(`/jobs/${encodeURIComponent(activeJobId)}`, { method: "DELETE" });
+        appendLog(`Pedido de cancelamento enviado para ${activeJobId}.`);
+        refreshJobStatus();
+      } catch (error) {
+        appendLog(`Erro ao cancelar job: ${error.message}`);
+      }
+    }
+
+    async function checkDbStatus() {
+      try {
+        const data = await requestApi("/db/status");
+        appendLog(`DB status=${data.status}, meta_entries=${data.meta_entries}, path=${data.path}`);
+      } catch (error) {
+        appendLog(`Erro no db/status: ${error.message}`);
+      }
+    }
+
+    elements.operationType.addEventListener("change", updateDefaultParams);
+    elements.btnOps.addEventListener("click", loadOperations);
+    elements.btnCreate.addEventListener("click", createJob);
+    elements.btnCancel.addEventListener("click", cancelCurrentJob);
+    elements.btnDb.addEventListener("click", checkDbStatus);
+
+    loadOperations();
+  </script>
+</body>
+</html>

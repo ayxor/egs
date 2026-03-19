@@ -5,6 +5,10 @@ set -u
 BASE="${BASE:-http://localhost:8080}"
 KEY="${KEY:-stub-api-key}"
 
+UPLOAD_FILE=$(mktemp)
+trap 'rm -f "$UPLOAD_FILE"' EXIT
+printf 'fake-video-content\n' > "$UPLOAD_FILE"
+
 request_code() {
   local expected="$1"
   shift
@@ -37,26 +41,6 @@ request_code "401" "GET /db/status without API key" "$BASE/db/status" || exit 1
 # DB status with API key -> 200
 request_code "200" "GET /db/status" \
   -H "X-API-Key: $KEY" "$BASE/db/status" || exit 1
-
-# Resource state without API key -> 401
-request_code "401" "GET /resources/{resource_id}/state without API key" \
-  "$BASE/resources/resource_demo_001/state" || exit 1
-
-RESOURCE_DB_ID="resource_demo_001"
-
-# Valid create job with resource_id -> 202
-request_code "202" "POST /jobs valid with resource_id" \
-  -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"resource_id":"resource_demo_001","src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4","operations":[{"type":"rotate","params":{"degrees":90}}]}' || exit 1
-
-# Get existing resource state -> 200
-request_code "200" "GET /resources/{resource_id}/state" \
-  -H "X-API-Key: $KEY" "$BASE/resources/$RESOURCE_DB_ID/state" || exit 1
-
-# Get missing resource state -> 404
-request_code "404" "GET /resources/resource_inexistente/state" \
-  -H "X-API-Key: $KEY" "$BASE/resources/resource_inexistente/state" || exit 1
 
 # List supported operations -> 200
 request_code "200" "GET /jobs/operations" \
@@ -94,46 +78,65 @@ request_code "200" "GET /jobs/{job_id} cancelled" \
 request_code "404" "DELETE /jobs/job_inexistente" \
   -X DELETE -H "X-API-Key: $KEY" "$BASE/jobs/job_inexistente" || exit 1
 
-# Valid create job -> 202
-request_code "202" "POST /jobs valid" \
+# Valid create job with multipart upload -> 202
+request_code "202" "POST /jobs valid multipart" \
   -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4","operations":[{"type":"watermark","params":{"text":"UA","position":"bottom-right","opacity":0.8}}]}' || exit 1
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F "dst_url=https://storage/processed/abc123.mp4" \
+  -F 'operations=[{"type":"watermark","params":{"text":"UA","position":"bottom-right","opacity":0.8}}]' || exit 1
 
-# Missing src_url -> 400
-request_code "400" "POST /jobs missing src_url" \
+# Missing file -> 400
+request_code "400" "POST /jobs missing file" \
   -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"dst_url":"https://storage/processed/abc123.mp4","operations":[{"type":"watermark"}]}' || exit 1
+  -H "X-API-Key: $KEY" \
+  -F "dst_url=https://storage/processed/abc123.mp4" \
+  -F 'operations=[{"type":"watermark"}]' || exit 1
 
 # Missing dst_url -> 400
 request_code "400" "POST /jobs missing dst_url" \
   -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"src_url":"https://storage/raw/abc123.mp4","operations":[{"type":"watermark"}]}' || exit 1
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F 'operations=[{"type":"watermark"}]' || exit 1
 
 # Missing operations -> 400
 request_code "400" "POST /jobs missing operations" \
   -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4"}' || exit 1
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F "dst_url=https://storage/processed/abc123.mp4" || exit 1
 
 # Empty operations -> 400
 request_code "400" "POST /jobs empty operations" \
   -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4","operations":[]}' || exit 1
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F "dst_url=https://storage/processed/abc123.mp4" \
+  -F 'operations=[]' || exit 1
+
+# Invalid operations JSON -> 400
+request_code "400" "POST /jobs invalid operations JSON" \
+  -X POST "$BASE/jobs" \
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F "dst_url=https://storage/processed/abc123.mp4" \
+  -F 'operations={invalid-json}' || exit 1
 
 # Unknown operation -> 422
 request_code "422" "POST /jobs unknown operation" \
   -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4","operations":[{"type":"inexistente"}]}' || exit 1
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F "dst_url=https://storage/processed/abc123.mp4" \
+  -F 'operations=[{"type":"inexistente"}]' || exit 1
 
 # Create job and extract JOB_ID for follow-up tests
 create_response=$(curl -s -X POST "$BASE/jobs" \
-  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
-  -d '{"src_url":"https://storage/raw/abc123.mp4","dst_url":"https://storage/processed/abc123.mp4","operations":[{"type":"rotate","params":{"degrees":90}}]}')
+  -H "X-API-Key: $KEY" \
+  -F "file=@$UPLOAD_FILE;filename=demo.mp4" \
+  -F "dst_url=https://storage/processed/abc123.mp4" \
+  -F 'operations=[{"type":"rotate","params":{"degrees":90}}]')
 
 JOB_ID=$(printf '%s' "$create_response" | sed -n 's/.*"job_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
 
@@ -152,20 +155,12 @@ request_code "200" "GET /jobs/{job_id}" \
 request_code "404" "GET /jobs/job_inexistente" \
   -H "X-API-Key: $KEY" "$BASE/jobs/job_inexistente" || exit 1
 
-# Get operations for valid job -> 200
-request_code "200" "GET /jobs/{job_id}/operations" \
+# Removed endpoint /jobs/{job_id}/operations should not exist -> 404
+request_code "404" "GET /jobs/{job_id}/operations removed" \
   -H "X-API-Key: $KEY" "$BASE/jobs/$JOB_ID/operations" || exit 1
 
-# Get operations for missing job -> 404
-request_code "404" "GET /jobs/job_inexistente/operations" \
-  -H "X-API-Key: $KEY" "$BASE/jobs/job_inexistente/operations" || exit 1
-
-# Subscribe progress SSE for valid job -> 200
-request_code "200" "GET /jobs/{job_id}/progress" \
-  -H "X-API-Key: $KEY" -N --max-time 15 "$BASE/jobs/$JOB_ID/progress" || exit 1
-
-# Subscribe progress SSE for missing job -> 404
-request_code "404" "GET /jobs/job_inexistente/progress" \
-  -H "X-API-Key: $KEY" "$BASE/jobs/job_inexistente/progress" || exit 1
+# Removed endpoint /jobs/{job_id}/progress should not exist -> 404
+request_code "404" "GET /jobs/{job_id}/progress removed" \
+  -H "X-API-Key: $KEY" "$BASE/jobs/$JOB_ID/progress" || exit 1
 
 echo "All tests passed."
