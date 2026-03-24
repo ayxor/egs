@@ -2,11 +2,8 @@ openapi: 3.0.3
 info:
   title: Video Editor Service
   description: >
-    Generic media processing service. Receives a resource via URL, applies
-    the requested operations, and delivers the result to a destination URL.
-    Completely agnostic to business logic — does not know about users, institutions,
-    or any other service. All URLs are provided by the Composer at request time,
-    guaranteeing total loose coupling.
+    Generic media processing service. Receives an uploaded source file, applies
+    requested operations, and delivers the result to a destination URL.
     Accessible only by internal services via API key.
   version: 1.0.0
 
@@ -25,49 +22,63 @@ components:
       name: X-API-Key
 
   schemas:
-    JobRequest:
+    JobOperation:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          example: watermark
+        params:
+          type: object
+          description: Operation-specific parameters.
+          example:
+            text: UA
+            position: bottom-right
+            opacity: 0.8
+
+    JobCreateRequest:
+      type: object
+      required: [file, dst_url, operations]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Source file uploaded by the caller.
+        dst_url:
+          type: string
+          description: HTTP URL to which the service uploads the processed file.
+          example: https://storage/processed/abc123.mp4
+        progress_url:
+          type: string
+          description: Optional callback URL for progress notifications.
+          example: https://composer/internal/jobs/progress
+        operations:
+          type: string
+          description: JSON-encoded array of operations to apply.
+          example: '[{"type":"watermark","params":{"text":"UA","position":"bottom-right","opacity":0.8}}]'
+
+    JobUpsertRequest:
       type: object
       required: [src_url, dst_url, operations]
       properties:
         src_url:
           type: string
-          description: >
-            HTTP URL from which the Video Editor will fetch the source file (GET).
-            Provided by the Composer — can point to the Object Storage, the Composer
-            itself, or any other system. The Video Editor does not know or care.
-          example: https://object-storage/objects/universidade-aveiro/raw/abc123.mp4?token=...
+          description: HTTP URL from which the service fetches the source file.
+          example: https://storage/raw/abc123.mp4
         dst_url:
           type: string
-          description: >
-            HTTP URL to which the Video Editor will deliver the processed file (PUT).
-            Provided by the Composer — typically a presigned PUT URL for the Object Storage.
-          example: https://object-storage/objects/universidade-aveiro/processed/abc123.mp4?token=...
+          description: HTTP URL to which the service uploads the processed file.
+          example: https://storage/processed/abc123.mp4
         progress_url:
           type: string
-          description: >
-            Optional HTTP URL to which the Video Editor will POST progress updates via SSE.
-            Provided by the Composer. If omitted, progress can still be polled via
-            GET /jobs/{job_id}.
+          description: Optional callback URL for progress notifications.
           example: https://composer/internal/jobs/progress
         operations:
           type: array
-          description: >
-            List of operations to apply to the source file, in order.
-            The exact structure of each operation is defined by the implementation.
+          description: Ordered list of operations to apply.
           items:
-            type: object
-            required: [type]
-            properties:
-              type:
-                type: string
-                example: watermark
-              params:
-                type: object
-                description: Operation-specific parameters.
-                example:
-                  text: UA
-                  position: bottom-right
-                  opacity: 0.8
+            $ref: '#/components/schemas/JobOperation'
 
     JobCreated:
       type: object
@@ -75,6 +86,15 @@ components:
         job_id:
           type: string
           example: job_7f3a1b
+
+    JobProgress:
+      type: object
+      properties:
+        percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 45
 
     JobStatus:
       type: object
@@ -84,38 +104,38 @@ components:
           example: job_7f3a1b
         status:
           type: string
-          enum: [queued, processing, done, failed]
+          enum: [queued, processing, done, failed, cancelled]
           example: processing
         percent:
           type: integer
           minimum: 0
           maximum: 100
           example: 45
-        created_at:
-          type: string
-          format: date-time
-          example: 2024-03-01T10:00:00Z
-        updated_at:
-          type: string
-          format: date-time
-          example: 2024-03-01T10:01:23Z
-
-    JobOperations:
-      type: object
-      properties:
+        progress:
+          $ref: '#/components/schemas/JobProgress'
         operations:
           type: array
           items:
-            type: object
-            properties:
-              type:
-                type: string
-                example: watermark
-              params:
-                type: array
-                items:
-                  type: string
-                example: [text, position, opacity]
+            $ref: '#/components/schemas/JobOperation'
+        source_ref:
+          type: string
+          example: upload://my-video.mp4
+        source_file_name:
+          type: string
+          nullable: true
+          example: my-video.mp4
+        source_file_mime_type:
+          type: string
+          nullable: true
+          example: video/mp4
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-03-17T10:00:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-03-17T10:01:23Z
 
     OperationList:
       type: object
@@ -134,32 +154,69 @@ components:
                   type: string
                 example: [text, position, opacity]
 
+    DatabaseStatus:
+      type: object
+      properties:
+        database:
+          type: string
+          example: sqlite
+        status:
+          type: string
+          example: ok
+        path:
+          type: string
+          example: video_editor.db
+        meta_entries:
+          type: integer
+          example: 2
+
     Error:
       type: object
       properties:
         error:
           type: string
           example: job not found
+        details:
+          type: string
+          nullable: true
+          example: unable to open database file
 
 paths:
+  /db/status:
+    get:
+      summary: Check database status
+      description: Returns status information for the service SQLite database.
+      responses:
+        '200':
+          description: Database status information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseStatus'
+        '401':
+          description: Missing or invalid API key
+        '500':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /jobs:
     post:
       summary: Create a processing job
       description: >
-        Accepts a processing request and starts the job asynchronously.
-        Responds immediately with a job_id.
-        Progress can be tracked via SSE (GET /jobs/{job_id}/progress)
-        or polling (GET /jobs/{job_id}).
+        Accepts an uploaded source file and starts the job asynchronously.
+        Returns immediately with a job_id generated by the service.
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
-              $ref: '#/components/schemas/JobRequest'
+              $ref: '#/components/schemas/JobCreateRequest'
       responses:
         '202':
-          description: Job accepted and started (asynchronous)
+          description: Job accepted and started
           content:
             application/json:
               schema:
@@ -170,70 +227,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid API key
         '422':
-          description: Unknown or unsupported operation type
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /jobs/{job_id}:
-    get:
-      summary: Get job status
-      description: >
-        Returns the current status and progress of a job.
-        Alternative to SSE for contexts where streaming is not viable.
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-          example: job_7f3a1b
-      responses:
-        '200':
-          description: Job status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JobStatus'
-        '404':
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-  /jobs/{job_id}/progress:
-    get:
-      summary: Stream job progress via SSE
-      description: >
-        Opens a Server-Sent Events stream that emits real-time progress updates
-        for the given job. The Composer subscribes to this stream and retransmits
-        progress to the client.
-        The stream closes automatically when the job reaches status "done" or "failed".
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-          example: job_7f3a1b
-      responses:
-        '200':
-          description: SSE stream opened
-          content:
-            text/event-stream:
-              schema:
-                type: string
-              example: |
-                data: {"job_id": "job_7f3a1b", "percent": 0, "status": "started"}
-
-                data: {"job_id": "job_7f3a1b", "percent": 45, "status": "processing"}
-
-                data: {"job_id": "job_7f3a1b", "percent": 100, "status": "done"}
-        '404':
-          description: Job not found
+          description: Unknown or unsupported operation
           content:
             application/json:
               schema:
@@ -242,10 +239,6 @@ paths:
   /jobs/operations:
     get:
       summary: List supported operations
-      description: >
-        Returns the list of operations this service supports,
-        along with their available parameters.
-        Useful for the Composer to discover capabilities at runtime.
       responses:
         '200':
           description: Supported operations
@@ -253,28 +246,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OperationList'
+        '401':
+          description: Missing or invalid API key
 
-  /jobs/{job_id}/operations:
+  /jobs/{job_id}:
     get:
-      summary: Get operations of a specific job
-      description: >
-        Returns the operations that were requested for a specific job,
-        along with their parameters.
-        Useful for inspecting what processing was applied to a given resource.
+      summary: Get job status
       parameters:
         - name: job_id
           in: path
           required: true
           schema:
             type: string
-          example: job_7f3a1b
       responses:
         '200':
-          description: Operations applied to the job
+          description: Job status
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JobOperations'
+                $ref: '#/components/schemas/JobStatus'
+        '401':
+          description: Missing or invalid API key
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Create or replace a processing job with a fixed id
+      description: >
+        Creates a new job with the provided job_id, or replaces an existing one.
+        This enables idempotent orchestration from upstream services.
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobUpsertRequest'
+      responses:
+        '202':
+          description: Job accepted and started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobCreated'
+        '400':
+          description: Missing or invalid required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid API key
+        '422':
+          description: Unknown or unsupported operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Cancel a job
+      description: >
+        Cancels a queued or processing job. Terminal jobs remain unchanged.
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Job cancellation accepted
+        '401':
+          description: Missing or invalid API key
         '404':
           description: Job not found
           content:
