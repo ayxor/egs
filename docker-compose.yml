@@ -1,0 +1,132 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Composer database (PostgreSQL)
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: composer
+      POSTGRES_PASSWORD: composer
+      POSTGRES_DB: composer
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U composer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Keycloak database (PostgreSQL)
+  # ---------------------------------------------------------------------------
+  kc-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+      POSTGRES_DB: keycloak
+    volumes:
+      - kc-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Keycloak IAM service
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://kc-db:5432/keycloak"
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HTTP_PORT: "8080"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8080"
+    volumes:
+      - ../iam/keycloak/realm-egs.json:/opt/keycloak/data/import/realm-egs.json:ro
+      - ../iam/keycloak/themes/uastream:/opt/keycloak/themes/uastream:ro
+    depends_on:
+      kc-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Composer
+  # ---------------------------------------------------------------------------
+  composer:
+    build:
+      context: ../composer
+    ports:
+      - "8091:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://composer:composer@db:5432/composer"
+      KEYCLOAK_URL: "http://keycloak:8080"
+      KEYCLOAK_PUBLIC_URL: "http://localhost:8180"
+      KEYCLOAK_REALM: "egs"
+      KEYCLOAK_CLIENT_ID: "egs-platform"
+      KEYCLOAK_CLIENT_SECRET: "change-me-in-production"
+      OBJECT_STORAGE_URL: "http://object-storage:8080"
+      OBJECT_STORAGE_API_KEY: "stub-api-key"
+      VIDEO_EDITOR_URL: "http://video-editor:8080"
+      VIDEO_EDITOR_API_KEY: "stub-api-key"
+      NOTIFICATIONS_URL: "http://notifications:8080"
+      NOTIFICATIONS_API_KEY: "stub-api-key"
+      COMPOSER_BASE_URL: "http://composer:8080"
+
+  # ---------------------------------------------------------------------------
+  # Object Storage Stub
+  # ---------------------------------------------------------------------------
+  object-storage:
+    build:
+      context: ../object-storage
+    ports:
+      - "8081:8080"
+    environment:
+      OBJECT_STORAGE_API_KEY: "stub-api-key"
+
+  # ---------------------------------------------------------------------------
+  # Video Editor Stub
+  # ---------------------------------------------------------------------------
+  video-editor:
+    build:
+      context: ../video-editor
+    ports:
+      - "8082:8080"
+    environment:
+      VIDEO_EDITOR_API_KEY: "stub-api-key"
+
+  # ---------------------------------------------------------------------------
+  # Notifications Stub
+  # ---------------------------------------------------------------------------
+  notifications:
+    build:
+      context: ../notifications
+    ports:
+      - "8083:8080"
+    environment:
+      NOTIFICATIONS_API_KEY: "stub-api-key"
+      DATABASE_URL: "sqlite:////app/notifications.db"
+
+volumes:
+  pgdata:
+  kc-pgdata:
