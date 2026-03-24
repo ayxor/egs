@@ -12,10 +12,14 @@ Run:
 """
 
 from flask import Flask, request, jsonify, Response, make_response
+from flask_cors import CORS
+from urllib.parse import quote
+
 import mimetypes
 import os
 
 app = Flask(__name__)
+CORS(app)
 
 
 @app.before_request
@@ -46,6 +50,14 @@ def _apply_cors_headers(response):
 API_KEY = os.environ.get("OBJECT_STORAGE_API_KEY", "stub-api-key")
 
 def _require_api_key():
+    token = request.args.get("token")
+    if token == "stub-presign":
+        # Allow requests with valid presigned tokens
+        expires = request.args.get("expires")
+        if expires and int(expires) > int(datetime.now(timezone.utc).timestamp()):
+            return None
+        return jsonify({"error": "presigned token expired"}), 403
+
     key = request.headers.get("X-API-Key", "")
     if key != API_KEY:
         return jsonify({"error": "unauthorized"}), 401
@@ -347,6 +359,25 @@ def _delete_object(bucket, key):
 
 
 # ---------------------------------------------------------------------------
+@app.route("/objects/<bucket>/<path:key>/presign", methods=["POST"])
+def presign(bucket, key):
+    method = request.json.get("method", "GET")
+    expires_in = request.json.get("expires_in", 3600)  # seconds
+    
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    
+    url = (
+        f"http://object-storage:8080/objects/{quote(bucket)}/{quote(key)}"
+        f"?token=stub-presign&method={method}&expires={int(expires_at.timestamp())}"
+    )
+    
+    return jsonify({
+        "url": url,
+        "expires_at": expires_at.isoformat()
+    }), 200
+
+# Entry point
+
 # Entry point
 # ---------------------------------------------------------------------------
 
