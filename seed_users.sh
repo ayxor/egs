@@ -16,3 +16,7 @@ export STUD_ID=$(docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh get user
 docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh update users/${STUD_ID} -r egs -s 'attributes={"role":["student"]}'
 
 echo "Seeding complete!"
+
+echo "Syncing users to Composer DB..."
+docker exec -i main-db-1 psql -U composer -d composer -c "INSERT INTO users (keycloak_user_id, email, name, role, institution) VALUES ('${PROF_ID}', 'professor@ua.pt', 'Professor User', 'professor', 'Universidade de Aveiro') ON CONFLICT (email) DO UPDATE SET role = 'professor';"
+docker exec -i main-db-1 psql -U composer -d composer -c "INSERT INTO users (keycloak_user_id, email, name, role, institution) VALUES ('${STUD_ID}', 'student@ua.pt', 'Student User', 'student', 'Universidade de Aveiro') ON CONFLICT (email) DO UPDATE SET role = 'student';"
