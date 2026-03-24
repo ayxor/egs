@@ -436,13 +436,12 @@ function parseSseEvents(text) {
 
 function setupUploadForm() {
   const form = document.getElementById("upload-form");
-  if (!form) {
-    return;
-  }
+  if (!form) return;
 
   const uploadStatus = document.getElementById("upload-status");
   const statusText = document.getElementById("status-text");
   const progressFill = document.getElementById("progress-fill");
+  const submitBtn = document.getElementById("upload-submit");
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -473,24 +472,79 @@ function setupUploadForm() {
 
     const endpoint = mode === "process" ? "/videos/process" : "/videos";
 
-    if (uploadStatus) uploadStatus.classList.remove("hidden");
-    if (statusText) statusText.textContent = "Uploading video to server...";
-    if (progressFill) progressFill.style.width = "5%";
+    if (uploadStatus) {
+      uploadStatus.classList.remove("hidden");
+      // reset colors
+      if (progressFill) {
+          progressFill.style.background = "#0066cc";
+          progressFill.style.width = "0%";
+      }
+    }
+    
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Uploading...";
+    }
 
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${state.token}` },
-        body: formData,
-      });
+      if (mode !== "process") {
+        // --- XHR strictly to get actual upload percentage ---
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", endpoint, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${state.token}`);
 
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body || "Upload failed");
-      }
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            if (statusText) statusText.textContent = `Uploading: ${percent}%`;
+          }
+        };
 
-      if (mode === "process") {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const payload = JSON.parse(xhr.responseText);
+            if (statusText) statusText.textContent = "Upload complete!";
+            if (progressFill) progressFill.style.width = "100%";
+            notify("Video uploaded successfully!", "success");
+            window.setTimeout(() => window.location.href = `/watch/${payload.video_id}`, 1000);
+          } else {
+             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Publish Lecture"; }
+             if (statusText) statusText.textContent = `Error: ${xhr.status} ${xhr.statusText}`;
+             if (progressFill) progressFill.style.background = "#d32f2f";
+             notify("Upload failed: " + xhr.responseText, "error");
+          }
+        };
+
+        xhr.onerror = () => {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Publish Lecture"; }
+          if (progressFill) progressFill.style.background = "#d32f2f";
+          if (statusText) statusText.textContent = "Upload failed - Network error";
+          notify("Network Error during upload", "error");
+        };
+
+        xhr.send(formData);
+
+      } else {
+        // --- Fetch is required to sequentially stream Server-Sent Events after upload ---
+        // For 'process' mode, we upload then immediately tail the EventStream for watermarking %
+        if (statusText) statusText.textContent = "Uploading (waiting for engine)...";
+        if (progressFill) progressFill.style.width = "25%";
+        
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${state.token}` },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Publish Lecture"; }
+          const body = await response.text();
+          throw new Error(body || "Upload failed");
+        }
+
         if (statusText) statusText.textContent = "Processing video...";
+        
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -498,7 +552,7 @@ function setupUploadForm() {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          
+
           buffer += decoder.decode(value, { stream: true });
           const parts = buffer.split("\n\n");
           buffer = parts.pop();
@@ -526,21 +580,16 @@ function setupUploadForm() {
             }
           }
         }
-      } else {
-        const payload = await response.json();
-        if (statusText) statusText.textContent = "Upload complete!";
-        if (progressFill) progressFill.style.width = "100%";
-        notify(`Video uploaded successfully.`, "success");
-        window.setTimeout(() => {
-           window.location.href = `/watch/${payload.video_id}`;
-        }, 1500);
       }
-
-      form.reset();
-    } catch (error) {
-      notify(`Upload failed: ${error.message}`, "error");
-      if (statusText) statusText.textContent = "Upload failed.";
-      if (progressFill) progressFill.classList.add("error");
+    } catch (err) {
+      console.error(err);
+      if (statusText) statusText.textContent = `Error: ${err.message}`;
+      if (progressFill) progressFill.style.background = "#d32f2f";
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Publish Lecture";
+      }
+      notify(err.message, "error");
     }
   });
 }

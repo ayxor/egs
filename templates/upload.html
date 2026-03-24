@@ -32,6 +32,14 @@
       </div>
       <button class="button primary" type="submit" id="upload-submit" disabled>Publish Lecture</button>
     </form>
+
+    <div id="upload-status" class="hidden" style="margin-top: 1rem; padding: 1rem; border: 1px solid #ccc; border-radius: 6px; background: #f9f9f9;">
+      <p id="status-text" style="font-weight: bold; margin-bottom: 0.5rem;">Preparing upload...</p>
+      <div style="width: 100%; background: #e0e0e0; border-radius: 4px; overflow: hidden; height: 10px;">
+        <div id="progress-fill" style="width: 0%; height: 100%; background: #0066cc; transition: width 0.3s ease;"></div>
+      </div>
+    </div>
+
   </article>
 
   <aside class="card">
