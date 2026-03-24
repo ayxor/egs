@@ -14,6 +14,7 @@ Run:
 from flask import Flask, request, jsonify, Response, make_response
 from flask_cors import CORS
 from urllib.parse import quote
+from datetime import datetime, timedelta, timezone
 
 import mimetypes
 import os
@@ -215,7 +216,8 @@ def list_objects(bucket):
 
 
 @app.route("/objects/<bucket>", methods=["PUT"])
-def upload_object(bucket):
+@app.route("/objects/<bucket>/<path:key>", methods=["PUT"])
+def upload_object(bucket, key=None):
     """
     Store a binary object under bucket/key.
     Key is provided via query param ?key=<object-key>
@@ -227,7 +229,11 @@ def upload_object(bucket):
     if err:
         return err
 
-    key = _sanitize_key(request.args.get("key") or request.headers.get("X-Object-Key"))
+    if not key:
+        key = _sanitize_key(request.args.get("key") or request.headers.get("X-Object-Key"))
+    else:
+        key = _sanitize_key(key)
+        
     if not bucket or not key:
         return jsonify({"error": "invalid bucket or key"}), 400
 
