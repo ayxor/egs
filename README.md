@@ -65,4 +65,25 @@ Composer  ──►  IAM (Keycloak)
 
 ## Deployment
 
-> To be completed. Each service ships with a `Dockerfile` and the platform is orchestrated via `docker-compose`. Deployment instructions will be added here once the infrastructure configuration is finalised.
+To deploy the platform locally, you will need to clone all the service branches side-by-side. Our architecture relies on a mono-repo where each microservice lives in its own branch. 
+
+### 1. Setup the workspace directory structure
+Create a parent directory to hold all the services together:
+```bash
+mkdir uastream-platform && cd uastream-platform
+
+git clone -b main https://github.com/ayxor/egs.git main
+git clone -b composer https://github.com/ayxor/egs.git composer
+git clone -b iam https://github.com/ayxor/egs.git iam
+git clone -b object-storage https://github.com/ayxor/egs.git object-storage
+git clone -b video-editor https://github.com/ayxor/egs.git video-editor
+git clone -b notifications https://github.com/ayxor/egs.git notifications
+```
+
+### 2. Start the Orchestration
+Once the structure matches, enter the `main` directory and run the global composition:
+```bash
+cd main
+docker-compose up -build -d
+```
+All services are mapped inside the `docker-compose.yml` to build directly from their sibling local directories.
