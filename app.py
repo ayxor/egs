@@ -13,13 +13,16 @@ Run:
 """
 
 from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
 from datetime import datetime, timezone
 import threading
 import time
 import uuid
 import os
+import json
 
 app = Flask(__name__)
+CORS(app)
 
 # ---------------------------------------------------------------------------
 # API key auth
@@ -56,53 +59,116 @@ _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
 
-def _update_job(job_id: str, **kwargs):
+def _update_job(job_id: str, progress_url: str | None, **kwargs):
     with _jobs_lock:
-        _jobs[job_id].update(kwargs)
-        _jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+        if job_id in _jobs:
+            _jobs[job_id].update(kwargs)
+            _jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # If progress_url is provided, push update to Composer
+            if progress_url:
+                _push_progress(job_id, progress_url, _jobs[job_id])
+
+
+def _push_progress(job_id: str, progress_url: str, job_data: dict):
+    """Notify the Composer about the job progress via webhook."""
+    import urllib.request
+    try:
+        data = json.dumps({
+            "job_id": job_id,
+            "status": job_data["status"],
+            "percent": job_data["percent"],
+            "error": job_data.get("error_message")
+        }).encode("utf-8")
+        req = urllib.request.Request(progress_url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            pass
+    except Exception as exc:
+        print(f"[STUB] Failed to push progress to {progress_url}: {exc}")
 
 
 def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | None, operations: list):
     """
-    Background thread that simulates processing.
-    TODO:
-      1. GET src_url  → download source bytes
-      2. Apply each operation with FFmpeg (or another library)
-      3. POST progress updates to progress_url via SSE
-      4. PUT dst_url  → upload processed bytes
+    Background thread that processes video using FFmpeg.
     """
     import urllib.request
+    import subprocess
+    import tempfile
 
-    _update_job(job_id, status="processing", percent=0)
+    _update_job(job_id, progress_url, status="processing", percent=0)
 
     try:
-        # --- Step 1: fetch source ---
-        # TODO: replace stub sleep with real download
-        time.sleep(0.5)
-        _update_job(job_id, percent=10)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src_path = os.path.join(tmpdir, "src.video")
+            dst_path = os.path.join(tmpdir, "dst.mp4")
 
-        # --- Step 2: process operations ---
-        steps = len(operations) if operations else 1
-        for i, op in enumerate(operations, start=1):
-            op_type = op.get("type") if isinstance(op, dict) else op
-            print(f"[STUB] job={job_id} applying operation: {op_type}")
-            # TODO: invoke FFmpeg or processing library here
-            time.sleep(1)
-            percent = 10 + int((i / steps) * 80)
-            _update_job(job_id, percent=percent)
+            # --- Step 1: fetch source ---
+            print(f"[EDITOR] job={job_id} downloading from {src_url}")
+            req = urllib.request.Request(src_url, method="GET")
+            with urllib.request.urlopen(req) as resp:
+                with open(src_path, "wb") as f:
+                    f.write(resp.read())
+            
+            _update_job(job_id, progress_url, percent=20)
 
-        # --- Step 3: deliver result ---
-        # TODO: PUT processed bytes to dst_url
-        time.sleep(0.5)
-        _update_job(job_id, status="done", percent=100)
+            # --- Step 2: process operations with FFmpeg ---
+            # Default: transcode to web-friendly MP4
+            ffmpeg_args = [
+                "ffmpeg", "-y", "-i", src_path,
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                "-movflags", "+faststart", "-pix_fmt", "yuv420p", "-threads", "1"
+            ]
+
+            # Simple filter construction (very basic implementation)
+            vf = []
+            for op in operations:
+                op_type = op.get("type") if isinstance(op, dict) else op
+                params = op.get("params", {}) if isinstance(op, dict) else {}
+                
+                if op_type == "rotate":
+                    deg = params.get("degrees", 90)
+                    if deg == 90: vf.append("transpose=1")
+                    elif deg == 180: vf.append("transpose=2,transpose=2")
+                    elif deg == 270: vf.append("transpose=2")
+                elif op_type == "resize":
+                    w, h = params.get("width", -1), params.get("height", -1)
+                    vf.append(f"scale={w}:{h}")
+                elif op_type == "watermark":
+                    text = params.get("text", "UAStream")
+                    vf.append(f"drawtext=text='{text}':x=10:y=H-th-10:fontsize=24:fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2")
+
+            if vf:
+                ffmpeg_args.extend(["-vf", ",".join(vf)])
+
+            ffmpeg_args.append(dst_path)
+
+            print(f"[EDITOR] job={job_id} running ffmpeg: {' '.join(ffmpeg_args)}")
+            _update_job(job_id, progress_url, percent=30)
+            
+            result = subprocess.run(ffmpeg_args, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"FFmpeg failed: {result.stderr}")
+
+            _update_job(job_id, progress_url, percent=80)
+
+            # --- Step 3: deliver result ---
+            print(f"[EDITOR] job={job_id} uploading to {dst_url}")
+            with open(dst_path, "rb") as f:
+                video_bytes = f.read()
+                
+            req = urllib.request.Request(dst_url, data=video_bytes, method="PUT")
+            # Set mimetype to mp4 so object-storage can potentially use it
+            req.add_header("Content-Type", "video/mp4")
+            with urllib.request.urlopen(req) as resp:
+                pass
+            
+            _update_job(job_id, progress_url, status="done", percent=100)
 
     except Exception as exc:
-        print(f"[STUB] job={job_id} failed: {exc}")
-        with _jobs_lock:
-            current_percent = _jobs[job_id]["percent"]
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        print(f"[STUB] job={job_id} marked as failed at {current_percent}%")
+        print(f"[EDITOR] job={job_id} failed: {exc}")
+        _update_job(job_id, progress_url, status="failed", error_message=str(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +251,7 @@ def get_job(job_id):
 
     job = _jobs.get(job_id)
     if not job:
-        return jsonify({"error": "job not found"}), 404
+        return jsonify({"error": "job_id not found"}), 404
 
     return jsonify({
         "job_id":     job["job_id"],
@@ -193,6 +259,7 @@ def get_job(job_id):
         "percent":    job["percent"],
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
+        "error_message": job.get("error_message", ""),
     }), 200
 
 
@@ -208,7 +275,7 @@ def job_progress_sse(job_id):
         return err
 
     if job_id not in _jobs:
-        return jsonify({"error": "job not found"}), 404
+        return jsonify({"error": "job_id not found"}), 404
 
     def sse_generator():
         while True:
