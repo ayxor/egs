@@ -1,59 +1,10 @@
-const demoVideos = [
-  {
-    id: "demo-vhdl-1",
-    title: "Introduction to VHDL for Digital Systems",
-    professor: "Professor Silva",
-    subject: "LSD",
-    course: "MIECT",
-    description: "Entity/architecture basics, signals, and a first simulation workflow.",
-    tags: ["recent", "watermarked", "programming"],
-    duration: "42 min",
-    views: "214 students",
-    accent: "linear-gradient(135deg, #d6603b, #ebb18f)",
-  },
-  {
-    id: "demo-net-1",
-    title: "Campus Routing Fundamentals",
-    professor: "Professor Almeida",
-    subject: "Networks",
-    course: "LEI",
-    description: "How packet forwarding works from classrooms to core routers.",
-    tags: ["recent"],
-    duration: "31 min",
-    views: "177 students",
-    accent: "linear-gradient(135deg, #2a7b77, #7bc6be)",
-  },
-  {
-    id: "demo-db-1",
-    title: "Designing Video Metadata Schemas",
-    professor: "Professor Costa",
-    subject: "Databases",
-    course: "LEI",
-    description: "Modeling tags, ownership, institution visibility, and search indexes.",
-    tags: ["programming"],
-    duration: "28 min",
-    views: "129 students",
-    accent: "linear-gradient(135deg, #654237, #e5af88)",
-  },
-  {
-    id: "demo-rtos-1",
-    title: "Real-Time Scheduling in Embedded Systems",
-    professor: "Professor Rocha",
-    subject: "Embedded",
-    course: "MIEEC",
-    description: "Deadlines, jitter, and practical scheduling strategies for labs.",
-    tags: ["watermarked"],
-    duration: "55 min",
-    views: "95 students",
-    accent: "linear-gradient(135deg, #4f4a82, #8ea0f4)",
-  },
-];
+const demoVideos = [];
 
 const state = {
   token: sessionStorage.getItem("ua_access_token") || "",
   refreshToken: sessionStorage.getItem("ua_refresh_token") || "",
   profile: null,
-  videos: [...demoVideos],
+  videos: [],
   query: "",
   filter: "all",
 };
@@ -210,7 +161,7 @@ function filteredVideos() {
 
 async function loadVideos() {
   if (!state.token) {
-    state.videos = [...demoVideos];
+    state.videos = [];
     return;
   }
   const qs = new URLSearchParams();
@@ -222,9 +173,9 @@ async function loadVideos() {
       headers: { Authorization: `Bearer ${state.token}` },
     });
     const mapped = mapApiVideos(data.results || []);
-    state.videos = mapped.length ? mapped : [...demoVideos];
+    state.videos = mapped.length ? mapped : [];
   } catch {
-    state.videos = [...demoVideos];
+    state.videos = [];
     notify("Live catalog unavailable. Showing demo feed.", "warn");
   }
 }
@@ -294,19 +245,58 @@ function setupFilters() {
 async function setupWatchPage() {
   await loadVideos();
   const pool = filteredVideos();
-  const current = pool.find((v) => v.id === selectedVideoId) || pool[0] || demoVideos[0];
-
+  
   const frame = document.getElementById("player-frame");
   const title = document.getElementById("watch-title");
   const meta = document.getElementById("watch-meta");
   const title2 = document.getElementById("watch-title-secondary");
   const description = document.getElementById("watch-description");
-  if (frame && title && meta && title2 && description && current) {
-    frame.style.background = current.accent;
-    title.textContent = current.title;
-    meta.textContent = `${current.professor} · ${current.subject} · ${current.course}`;
-    title2.textContent = current.title;
-    description.textContent = current.description;
+  const videoEl = document.getElementById("watch-video");
+  const overlay = document.getElementById("player-overlay");
+
+  const activeId = selectedVideoId || (pool[0] && pool[0].id);
+
+  if (activeId && state.token) {
+    try {
+      const videoData = await requestJson(`/videos/${encodeURIComponent(activeId)}`, {
+        headers: { Authorization: `Bearer ${state.token}` },
+      });
+      
+      console.log("Fetched Video Data:", videoData);
+
+      if (title) title.textContent = videoData.title || "Unknown Title";
+      if (title2) title2.textContent = videoData.title || "Unknown Title";
+      if (description) description.textContent = videoData.description || "No description.";
+      if (meta) meta.textContent = `${videoData.uploader_id || 'Professor'} · ${videoData.subject || 'Subject'} · ${videoData.course || 'Course'}`;
+      
+      if (videoEl && videoData.stream_url) {
+        videoEl.src = videoData.stream_url;
+        videoEl.style.display = "block";
+        if (overlay) overlay.style.display = "none";
+        if (frame) frame.style.background = "black";
+      } else if (videoEl) {
+         // Show it anyway so at least the player is there
+         videoEl.style.display = "block";
+         if (overlay) overlay.style.display = "none";
+      }
+    } catch (err) {
+      console.error("Failed to fetch stream URL:", err);
+      // Force display video so the user knows it's an empty player at least
+      if (videoEl) {
+        videoEl.style.display = "block";
+      }
+      if (overlay) {
+        overlay.style.display = "none";
+      }
+      if (title) title.textContent = "Error Loading Video";
+      if (description) description.textContent = err.message;
+    }
+  } else {
+    // If we reach here, we are missing state.token or activeId!
+    console.error("Missing activeId or state.token", { activeId, token: state.token });
+    if (overlay) overlay.style.display = "none";
+    if (title) title.textContent = "Authentication Required";
+    if (description) description.textContent = "Please sign in to watch videos.";
   }
 
   const recHost = document.getElementById("recommendations");
@@ -450,6 +440,10 @@ function setupUploadForm() {
     return;
   }
 
+  const uploadStatus = document.getElementById("upload-status");
+  const statusText = document.getElementById("status-text");
+  const progressFill = document.getElementById("progress-fill");
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!state.profile || state.profile.role !== "professor") {
@@ -479,6 +473,10 @@ function setupUploadForm() {
 
     const endpoint = mode === "process" ? "/videos/process" : "/videos";
 
+    if (uploadStatus) uploadStatus.classList.remove("hidden");
+    if (statusText) statusText.textContent = "Uploading video to server...";
+    if (progressFill) progressFill.style.width = "5%";
+
     try {
       const response = await fetch(endpoint, {
         method: "POST",
@@ -492,31 +490,57 @@ function setupUploadForm() {
       }
 
       if (mode === "process") {
+        if (statusText) statusText.textContent = "Processing video...";
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let complete = "";
+        let buffer = "";
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) {
-            break;
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.split("\n").find(l => l.startsWith("data:"));
+            if (!line) continue;
+            try {
+              const eventData = JSON.parse(line.slice(5).trim());
+              if (eventData.percent !== undefined) {
+                if (progressFill) progressFill.style.width = `${eventData.percent}%`;
+                if (statusText) statusText.textContent = `Processing: ${eventData.percent}%`;
+              }
+              if (eventData.status === "done") {
+                if (statusText) statusText.textContent = "Processing complete!";
+                notify("Video processed and ready.", "success");
+                window.setTimeout(() => {
+                   window.location.href = `/watch/${eventData.video_id}`;
+                }, 1500);
+              } else if (eventData.status === "failed") {
+                throw new Error(eventData.error || "Processing failed");
+              }
+            } catch (e) {
+              console.error("SSE Parse Error", e);
+            }
           }
-          complete += decoder.decode(value, { stream: true });
-        }
-        const events = parseSseEvents(complete);
-        const done = events.find((e) => e.status === "done");
-        if (done) {
-          notify(`Lecture processed. Video id: ${done.video_id || done.job_id}`, "success");
-        } else {
-          notify("Processing started. Check notifications later.", "info");
         }
       } else {
         const payload = await response.json();
-        notify(`Video uploaded: ${payload.video_id}`, "success");
+        if (statusText) statusText.textContent = "Upload complete!";
+        if (progressFill) progressFill.style.width = "100%";
+        notify(`Video uploaded successfully.`, "success");
+        window.setTimeout(() => {
+           window.location.href = `/watch/${payload.video_id}`;
+        }, 1500);
       }
 
       form.reset();
     } catch (error) {
       notify(`Upload failed: ${error.message}`, "error");
+      if (statusText) statusText.textContent = "Upload failed.";
+      if (progressFill) progressFill.classList.add("error");
     }
   });
 }
@@ -538,6 +562,12 @@ async function boot() {
   updateHeaderSession();
   await loadProfile();
   updateHeaderSession();
+
+  // Enforce authentication for protected pages
+  if (["library", "watch", "upload"].includes(page) && !state.token) {
+    window.location.href = "/auth/login";
+    return;
+  }
 
   if (page === "home" || page === "library") {
     await bootHomeOrLibrary();

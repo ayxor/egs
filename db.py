@@ -201,16 +201,16 @@ def update_video_status(video_id, status, processed_storage_key=None):
 # Processing jobs
 # ---------------------------------------------------------------------------
 
-def create_processing_job(video_id, external_job_id, operations):
+def create_processing_job(video_id, external_job_id, operations, processed_key=None):
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO processing_jobs (video_id, external_job_id, operations)
-                VALUES (%s, %s, %s)
+                INSERT INTO processing_jobs (video_id, external_job_id, operations, processed_key)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
                 """,
-                (video_id, external_job_id, Json(operations)),
+                (video_id, external_job_id, Json(operations), processed_key),
             )
             return cur.fetchone()
 

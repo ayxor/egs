@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS processing_jobs (
     id                UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
     video_id          UUID        NOT NULL REFERENCES videos(id),
     external_job_id   TEXT        UNIQUE,
+    processed_key     TEXT,
     status            TEXT        NOT NULL DEFAULT 'queued'
                                   CHECK (status IN ('queued','processing','done','failed')),
     percent           INT         NOT NULL DEFAULT 0,

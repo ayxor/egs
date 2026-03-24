@@ -18,6 +18,7 @@ import os
 from urllib.parse import urlencode
 
 from flask import Flask, request, jsonify, Response, render_template, redirect
+from flask_cors import CORS
 from jose import JWTError
 
 import config
@@ -32,6 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app)
 
 # ---------------------------------------------------------------------------
 # Module-level startup — runs in every gunicorn worker on import
@@ -177,8 +179,14 @@ def _professor_required():
     payload, err = _jwt_required()
     if err:
         return None, err
-    if payload.get("role") != "professor":
+        
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user or user["role"] != "professor":
         return None, (jsonify({"error": "forbidden – professor role required"}), 403)
+        
+    # Populate payload with db truth
+    payload["role"] = user["role"]
+    payload["institution"] = user["institution"]
     return payload, None
 
 
@@ -437,7 +445,7 @@ def _parse_tags():
 
 
 @app.route("/videos", methods=["POST"])
-def upload_video():
+def upload_video_endpoint():
     """Upload a video without Video Editor processing."""
     payload, err = _professor_required()
     if err:
@@ -587,7 +595,7 @@ def upload_video_with_processing():
     external_job_id = job_resp["job_id"]
 
     # 5) Record processing job in DB
-    db.create_processing_job(video_id, external_job_id, operations)
+    db.create_processing_job(video_id, external_job_id, operations, processed_key)
 
     # 6) Relay SSE progress from Video Editor to the client
     def _sse_relay():
@@ -640,7 +648,7 @@ def upload_video_with_processing():
 
 
 @app.route("/videos", methods=["GET"])
-def list_videos():
+def list_videos_endpoint():
     """List / search videos scoped to the authenticated user's institution."""
     payload, err = _jwt_required()
     if err:
@@ -689,10 +697,10 @@ def list_videos():
 
 
 @app.route("/videos/<video_id>", methods=["GET"])
-def get_video(video_id):
+def get_video_endpoint(video_id):
     """Return video metadata and a temporary presigned streaming URL."""
     if not _UUID_RE.match(video_id):
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     payload, err = _jwt_required()
     if err:
@@ -704,10 +712,10 @@ def get_video(video_id):
 
     video = db.get_video(video_id)
     if not video:
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     if video["institution"] != user["institution"]:
-        return jsonify({"error": "forbidden"}), 403
+        print("FORBIDDEN"); return jsonify({"error": "forbidden"}), 403
 
     # Prefer the processed version if available
     storage_key = video["processed_storage_key"] or video["raw_storage_key"]
@@ -716,8 +724,13 @@ def get_video(video_id):
             video["storage_bucket"], storage_key, method="GET"
         )
         stream_url = presign["url"]
-    except Exception:
-        stream_url = None
+        
+        # Rewrite internal object-storage URL to localhost for the frontend client browser
+        if stream_url and "http://object-storage:8080" in stream_url:
+            stream_url = stream_url.replace("http://object-storage:8080", "http://localhost:8081")
+            
+    except Exception as e:
+        stream_url = None; print("PRESIGN ERROR:", e)
 
     return jsonify({
         "video_id": str(video["id"]),
@@ -733,10 +746,10 @@ def get_video(video_id):
 
 
 @app.route("/videos/<video_id>", methods=["DELETE"])
-def delete_video(video_id):
+def delete_video_endpoint(video_id):
     """Delete a video. Only the uploader may delete."""
     if not _UUID_RE.match(video_id):
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     payload, err = _jwt_required()
     if err:
@@ -748,7 +761,7 @@ def delete_video(video_id):
 
     video = db.get_video(video_id)
     if not video:
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     if str(video["uploader_id"]) != str(user["id"]):
         return jsonify({"error": "forbidden – only the uploader can delete"}), 403
@@ -787,7 +800,8 @@ def receive_job_progress():
         if job:
             vid = str(job["video_id"])
             if status == "done":
-                processed_key = f"processed/{vid}.mp4"
+                # Use the key stored when the job was created
+                processed_key = job.get("processed_key") or f"processed/{vid}.mp4"
                 db.update_video_status(vid, "ready", processed_key)
             else:
                 db.update_video_status(vid, "failed")

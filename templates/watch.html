@@ -4,7 +4,8 @@
 <section class="watch-layout">
   <article class="player-card card">
     <div class="player-frame" id="player-frame">
-      <div class="player-overlay">
+      <video id="watch-video" controls autoplay style="position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; background: #000; z-index: 1;"></video>
+      <div class="player-overlay" id="player-overlay" style="z-index: 2;">
         <p class="eyebrow">Now Watching</p>
         <h2 id="watch-title">Lecture</h2>
         <p id="watch-meta" class="lead">Professor · Subject · Course</p>
