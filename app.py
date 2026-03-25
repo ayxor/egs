@@ -76,9 +76,10 @@ def _push_progress(job_id: str, progress_url: str, job_data: dict):
     try:
         data = json.dumps({
             "job_id": job_id,
-            "status": job_data["status"],
-            "percent": job_data["percent"],
-            "error": job_data.get("error_message")
+            "status": job_data.get("status", "unknown"),
+            "percent": job_data.get("percent", 0),
+            "message": job_data.get("message", ""),
+            "error": job_data.get("error_message", "")
         }).encode("utf-8")
         req = urllib.request.Request(progress_url, data=data, method="POST")
         req.add_header("Content-Type", "application/json")
@@ -93,10 +94,13 @@ def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | No
     Background thread that processes video using FFmpeg.
     """
     import urllib.request
+    import urllib.error
     import subprocess
     import tempfile
+    import re
+    import select
 
-    _update_job(job_id, progress_url, status="processing", percent=0)
+    _update_job(job_id, progress_url, status="processing", percent=0, message="Initializing workspace...")
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -104,16 +108,30 @@ def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | No
             dst_path = os.path.join(tmpdir, "dst.mp4")
 
             # --- Step 1: fetch source ---
-            print(f"[EDITOR] job={job_id} downloading from {src_url}")
+            print(f"[EDITOR] job={job_id} downloading from {src_url}", flush=True)
+            _update_job(job_id, progress_url, percent=5, message=f"Downloading source video from object storage...")
             req = urllib.request.Request(src_url, method="GET")
-            with urllib.request.urlopen(req) as resp:
-                with open(src_path, "wb") as f:
-                    f.write(resp.read())
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    with open(src_path, "wb") as f:
+                        f.write(resp.read())
+            except urllib.error.URLError as e:
+                raise Exception(f"Failed to communicate with Composer/Storage at {src_url}: {e}")
             
-            _update_job(job_id, progress_url, percent=20)
+            _update_job(job_id, progress_url, percent=15, message="Source downloaded. Gathering metadata...")
+
+            # Calculate duration
+            duration = 1.0
+            try:
+                probe_res = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", src_path], capture_output=True, text=True)
+                if probe_res.returncode == 0:
+                    duration = float(probe_res.stdout.strip())
+            except Exception:
+                pass
+
+            _update_job(job_id, progress_url, percent=20, message=f"Configuring FFmpeg for video processing (duration: {duration:.1f}s)...")
 
             # --- Step 2: process operations with FFmpeg ---
-            # Default: transcode to web-friendly MP4
             ffmpeg_args = [
                 "ffmpeg", "-y", "-i", src_path,
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
@@ -121,7 +139,6 @@ def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | No
                 "-movflags", "+faststart", "-pix_fmt", "yuv420p", "-threads", "1"
             ]
 
-            # Simple filter construction (very basic implementation)
             vf = []
             for op in operations:
                 op_type = op.get("type") if isinstance(op, dict) else op
@@ -136,35 +153,59 @@ def _process_job(job_id: str, src_url: str, dst_url: str, progress_url: str | No
                     w, h = params.get("width", -1), params.get("height", -1)
                     vf.append(f"scale={w}:{h}")
                 elif op_type == "watermark":
-                    text = params.get("text", "UAStream")
-                    vf.append(f"drawtext=text='{text}':x=10:y=H-th-10:fontsize=24:fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2")
+                    text = params.get("text", "Universidade de Aveiro")
+                    vf.append(f"drawtext=text='{text}':x=10:y=H-th-10:fontsize=48:fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2")
 
             if vf:
                 ffmpeg_args.extend(["-vf", ",".join(vf)])
 
             ffmpeg_args.append(dst_path)
 
-            print(f"[EDITOR] job={job_id} running ffmpeg: {' '.join(ffmpeg_args)}")
-            _update_job(job_id, progress_url, percent=30)
+            print(f"[EDITOR] job={job_id} running ffmpeg: {' '.join(ffmpeg_args)}", flush=True)
+            _update_job(job_id, progress_url, percent=25, message="Starting FFmpeg encoding...")
             
-            result = subprocess.run(ffmpeg_args, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"FFmpeg failed: {result.stderr}")
+            process = subprocess.Popen(ffmpeg_args, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True)
+            
+            time_pattern = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
+            last_percent = 25
+            
+            while True:
+                reads = [process.stderr.fileno()]
+                ret = select.select(reads, [], [], 1.0)
+                if ret[0]:
+                    line = process.stderr.readline()
+                    if not line:
+                        break
+                    match = time_pattern.search(line)
+                    if match:
+                        h, m, s = match.groups()
+                        cur_time = int(h) * 3600 + int(m) * 60 + float(s)
+                        prog = min((cur_time / duration) * 60, 60)
+                        curr_percent = int(25 + prog)
+                        if curr_percent > last_percent:
+                            last_percent = curr_percent
+                            _update_job(job_id, progress_url, percent=last_percent, message="Encoding video streams...")
+                else:
+                    if process.poll() is not None:
+                        break
 
-            _update_job(job_id, progress_url, percent=80)
+            process.wait()
+            if process.returncode != 0:
+                raise Exception(f"FFmpeg exited with code {process.returncode}")
+
+            _update_job(job_id, progress_url, percent=90, message="FFmpeg completed successfully. Uploading output...")
 
             # --- Step 3: deliver result ---
-            print(f"[EDITOR] job={job_id} uploading to {dst_url}")
+            print(f"[EDITOR] job={job_id} uploading to {dst_url}", flush=True)
             with open(dst_path, "rb") as f:
                 video_bytes = f.read()
                 
             req = urllib.request.Request(dst_url, data=video_bytes, method="PUT")
-            # Set mimetype to mp4 so object-storage can potentially use it
             req.add_header("Content-Type", "video/mp4")
             with urllib.request.urlopen(req) as resp:
                 pass
             
-            _update_job(job_id, progress_url, status="done", percent=100)
+            _update_job(job_id, progress_url, status="done", percent=100, message="Upload complete, job finished.")
 
     except Exception as exc:
         print(f"[EDITOR] job={job_id} failed: {exc}")
@@ -282,7 +323,15 @@ def job_progress_sse(job_id):
             job = _jobs.get(job_id, {})
             status  = job.get("status", "unknown")
             percent = job.get("percent", 0)
-            yield f'data: {{"job_id": "{job_id}", "percent": {percent}, "status": "{status}"}}\n\n'
+            message = job.get("message", "")
+            error_msg = job.get("error_message", "")
+            
+            import json
+            data = {"job_id": job_id, "percent": percent, "status": status, "message": message}
+            if error_msg:
+                data["error"] = error_msg
+                
+            yield f"data: {json.dumps(data)}\n\n"
             if status in ("done", "failed"):
                 break
             time.sleep(0.5)
