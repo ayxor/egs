@@ -60,6 +60,10 @@ a {
   margin: 0 auto;
 }
 
+body[data-page="watch"] .container {
+  width: min(1560px, calc(100vw - 28px));
+}
+
 .site-header {
   position: sticky;
   top: 0;
@@ -349,8 +353,8 @@ h2 {
 
 .watch-layout {
   display: grid;
-  grid-template-columns: 1.5fr minmax(320px, 0.9fr);
-  gap: 16px;
+  grid-template-columns: 2.8fr minmax(320px, 1fr);
+  gap: 24px;
 }
 
 .player-card {
@@ -358,7 +362,8 @@ h2 {
 }
 
 .player-frame {
-  min-height: 360px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   position: relative;
   border-radius: 20px 20px 0 0;
   background: linear-gradient(135deg, #d7623d, #efb08c);

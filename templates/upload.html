@@ -24,10 +24,7 @@
       </div>
       <input name="tags" type="text" placeholder="Comma-separated tags, e.g. vhdl, logic, design">
       <div class="two-col">
-        <select name="upload_mode">
-          <option value="process">Upload + watermark + notifications</option>
-          <option value="plain">Upload only</option>
-        </select>
+        <input type="hidden" name="upload_mode" value="process">
         <input name="file" type="file" accept="video/*" required>
       </div>
       <button class="button primary" type="submit" id="upload-submit" disabled>Publish Lecture</button>

@@ -28,6 +28,26 @@ def ensure_bucket(bucket):
     return resp.status_code in (201, 409)
 
 
+def download_object_stream(bucket, key):
+    """Download binary data from Object Storage as a stream."""
+    resp = requests.get(
+        f"{config.OBJECT_STORAGE_URL}/objects/{bucket}/{key}",
+        headers=_storage_headers(),
+        stream=True,
+    )
+    return resp
+
+
+def upload_object_stream(bucket, key, data, content_type="application/octet-stream"):
+    """Proxy upload binary data to Object Storage."""
+    resp = requests.put(
+        f"{config.OBJECT_STORAGE_URL}/objects/{bucket}/{key}",
+        headers={**_storage_headers(), "Content-Type": content_type},
+        data=data,
+    )
+    return resp
+
+
 def upload_object(bucket, key, data, content_type="application/octet-stream"):
     """Upload binary data to Object Storage."""
     resp = requests.put(

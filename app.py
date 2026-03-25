@@ -15,7 +15,7 @@ import uuid
 import logging
 import re
 import os
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 from flask import Flask, request, jsonify, Response, render_template, redirect
 from flask_cors import CORS
@@ -117,6 +117,23 @@ def upload_page():
         "upload.html",
         page_title="Upload · UAStream",
         page_name="upload",
+        downstream_services={
+            "iam": config.KEYCLOAK_URL,
+            "object_storage": config.OBJECT_STORAGE_URL,
+            "video_editor": config.VIDEO_EDITOR_URL,
+            "notifications": config.NOTIFICATIONS_URL,
+            "database": config.DATABASE_URL,
+        },
+    )
+
+
+@app.route("/studio", methods=["GET"])
+def studio_page():
+    """Professor studio page (manage videos)."""
+    return render_template(
+        "studio.html",
+        page_title="Studio · UAStream",
+        page_name="studio",
         downstream_services={
             "iam": config.KEYCLOAK_URL,
             "object_storage": config.OBJECT_STORAGE_URL,
@@ -569,21 +586,17 @@ def upload_video_with_processing():
     )
     video_id = str(video["id"])
 
-    # 3) Obtain presigned URLs (src for GET, dst for PUT)
-    try:
-        src_presign = services.presign_object(bucket, raw_key, method="GET")
-        dst_presign = services.presign_object(bucket, processed_key, method="PUT")
-    except Exception as exc:
-        logger.error("Presign failed: %s", exc)
-        db.update_video_status(video_id, "failed")
-        return jsonify({"error": "failed to generate presigned URLs"}), 502
+    # 3) Provide internal proxy URLs for source and destination to ensure all traffic goes through Composer
+    safe_bucket = quote(bucket)
+    src_url = f"{config.COMPOSER_BASE_URL}/internal/storage/{safe_bucket}/{raw_key}"
+    dst_url = f"{config.COMPOSER_BASE_URL}/internal/storage/{safe_bucket}/{processed_key}"
 
     # 4) Submit job to Video Editor
     progress_url = f"{config.COMPOSER_BASE_URL}/internal/jobs/progress"
     try:
         job_resp = services.create_job(
-            src_url=src_presign["url"],
-            dst_url=dst_presign["url"],
+            src_url=src_url,
+            dst_url=dst_url,
             progress_url=progress_url,
             operations=operations,
         )
@@ -645,6 +658,67 @@ def upload_video_with_processing():
             yield f'data: {json.dumps({"error": "stream interrupted"})}\n\n'
 
     return Response(_sse_relay(), status=202, mimetype="text/event-stream")
+
+
+@app.route("/videos/me", methods=["GET"])
+def list_my_videos_endpoint():
+    """List videos uploaded by the authenticated user (professors)."""
+    payload, err = _professor_required()
+    if err:
+        return err
+        
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+        
+    videos = db.get_videos_by_uploader(user["id"])
+    return jsonify({
+        "results": [
+            {
+                "video_id": str(v["id"]),
+                "title": v["title"],
+                "description": v["description"],
+                "tags": v["tags"] or [],
+                "course": v["course"],
+                "subject": v["subject"],
+                "status": v["status"],
+                "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+            }
+            for v in videos
+        ]
+    }), 200
+
+
+@app.route("/videos/<video_id>", methods=["PATCH", "PUT"])
+def update_video_endpoint(video_id):
+    """Update video metadata."""
+    payload, err = _professor_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    video = db.get_video(video_id)
+    if not video:
+        return jsonify({"error": "video not found"}), 404
+
+    if video["uploader_id"] != user["id"]:
+        return jsonify({"error": "forbidden"}), 403
+
+    body = request.get_json(force=True) or {}
+    title = body.get("title", video["title"])
+    description = body.get("description", video["description"])
+    course = body.get("course", video["course"])
+    subject = body.get("subject", video["subject"])
+    tags = body.get("tags", video["tags"])
+    
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    db.update_video(video_id, title, description, tags, course, subject)
+    return "", 204
 
 
 @app.route("/videos", methods=["GET"])
@@ -712,7 +786,7 @@ def get_video_endpoint(video_id):
 
     video = db.get_video(video_id)
     if not video:
-        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
+        print("VIDEOupload_page NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     if video["institution"] != user["institution"]:
         print("FORBIDDEN"); return jsonify({"error": "forbidden"}), 403
@@ -780,6 +854,24 @@ def delete_video_endpoint(video_id):
 # ---------------------------------------------------------------------------
 # Internal (called by Video Editor via progress_url callback)
 # ---------------------------------------------------------------------------
+
+@app.route("/internal/storage/<bucket>/<path:key>", methods=["GET", "PUT"])
+def internal_storage_proxy(bucket, key):
+    """Proxy requests from internal services to Object Storage."""
+    if request.method == "GET":
+        resp = services.download_object_stream(bucket, key)
+        
+        def generate():
+            for chunk in resp.iter_content(chunk_size=8192):
+                yield chunk
+                
+        return Response(generate(), status=resp.status_code, content_type=resp.headers.get("content-type"))
+        
+    elif request.method == "PUT":
+        content_type = request.headers.get("Content-Type", "application/octet-stream")
+        resp = services.upload_object_stream(bucket, key, request.stream, content_type=content_type)
+        return Response(resp.content, status=resp.status_code, content_type=resp.headers.get("content-type"))
+
 
 @app.route("/internal/jobs/progress", methods=["POST"])
 def receive_job_progress():

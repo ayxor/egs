@@ -123,6 +123,34 @@ def get_video(video_id):
             return cur.fetchone()
 
 
+def get_videos_by_uploader(uploader_id):
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, title, description, tags, course, subject, status, created_at
+                FROM videos
+                WHERE uploader_id = %s AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                (uploader_id,),
+            )
+            return cur.fetchall()
+
+
+def update_video(video_id, title, description, tags, course, subject):
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE videos
+                SET title = %s, description = %s, tags = %s, course = %s, subject = %s, updated_at = NOW()
+                WHERE id = %s
+                """,
+                (title, description, tags, course, subject, video_id),
+            )
+
+
 def search_videos(institution, q=None, course=None, subject=None,
                   limit=25, offset=0):
     with _get_connection() as conn:

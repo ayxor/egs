@@ -53,6 +53,8 @@ function updateHeaderSession() {
   const chip = document.getElementById("session-chip");
   const authLink = document.getElementById("auth-link");
   const uploadLink = document.getElementById("nav-upload");
+  const studioLink = document.getElementById("nav-studio");
+  
   if (!chip || !authLink) {
     return;
   }
@@ -60,6 +62,9 @@ function updateHeaderSession() {
     chip.textContent = `${state.profile.name} · ${state.profile.role}`;
     if (uploadLink) {
       uploadLink.classList.toggle("hidden", state.profile.role !== "professor");
+    }
+    if (studioLink) {
+      studioLink.classList.toggle("hidden", state.profile.role !== "professor");
     }
     authLink.textContent = "Sign Out";
     authLink.href = "#";
@@ -76,6 +81,9 @@ function updateHeaderSession() {
     if (uploadLink) {
       uploadLink.classList.add("hidden");
     }
+    if (studioLink) {
+      studioLink.classList.add("hidden");
+    }
     authLink.textContent = "Sign Out";
     authLink.href = "#";
     authLink.onclick = (event) => {
@@ -90,6 +98,9 @@ function updateHeaderSession() {
     chip.textContent = "Guest";
     if (uploadLink) {
       uploadLink.classList.add("hidden");
+    }
+    if (studioLink) {
+      studioLink.classList.add("hidden");
     }
     authLink.textContent = "Sign In";
     authLink.href = "/auth/login";
@@ -301,8 +312,31 @@ async function setupWatchPage() {
 
   const recHost = document.getElementById("recommendations");
   if (recHost) {
-    recHost.innerHTML = pool
-      .filter((v) => v.id !== current.id)
+    let recs = pool.filter((v) => v.id !== activeId);
+    
+    // Sort randomly
+    recs.sort(() => 0.5 - Math.random());
+    
+    // Fill up to 6 videos with dummy data if we don't have enough real videos
+    if (recs.length < 6) {
+      const dummyTitles = ["Advanced Mathematics", "Physics 101", "Introduction to Biology", "Computer Science Principles", "Modern History", "Philosophy of Science"];
+      const dummyProfs = ["Dr. Smith", "Prof. Johnson", "Dr. Williams", "Prof. Brown", "Dr. Davis", "Prof. Miller"];
+      const colors = ["#d7623d", "#efb08c", "#4CAF50", "#2196F3", "#9C27B0", "#FF9800", "#e91e63", "#00bcd4"];
+      
+      const needed = 6 - recs.length;
+      for (let i = 0; i < needed; i++) {
+        const rIndex = Math.floor(Math.random() * dummyTitles.length);
+        recs.push({
+          id: "dummy-" + Date.now() + "-" + i,
+          title: dummyTitles[rIndex],
+          professor: dummyProfs[rIndex],
+          course: "General Studies",
+          accent: colors[Math.floor(Math.random() * colors.length)]
+        });
+      }
+    }
+
+    recHost.innerHTML = recs
       .slice(0, 8)
       .map((video) => `
         <a class="recommend-item" href="/watch/${encodeURIComponent(video.id)}">
@@ -410,8 +444,8 @@ function updateUploadGate() {
     return;
   }
 
-  gate.className = "gate-message success";
-  gate.textContent = `Upload unlocked for ${state.profile.name} (${state.profile.role}).`;
+  gate.className = "hidden";
+  gate.textContent = "";
   form.querySelectorAll("input, textarea, select, button").forEach((el) => {
     el.disabled = false;
   });
@@ -564,7 +598,11 @@ function setupUploadForm() {
               const eventData = JSON.parse(line.slice(5).trim());
               if (eventData.percent !== undefined) {
                 if (progressFill) progressFill.style.width = `${eventData.percent}%`;
-                if (statusText) statusText.textContent = `Processing: ${eventData.percent}%`;
+                let msg = `Processing: ${eventData.percent}%`;
+                if (eventData.message) {
+                  msg += ` - ${eventData.message}`;
+                }
+                if (statusText) statusText.textContent = msg;
               }
               if (eventData.status === "done") {
                 if (statusText) statusText.textContent = "Processing complete!";
@@ -613,7 +651,7 @@ async function boot() {
   updateHeaderSession();
 
   // Enforce authentication for protected pages
-  if (["library", "watch", "upload"].includes(page) && !state.token) {
+  if (["library", "watch", "upload", "studio"].includes(page) && !state.token) {
     window.location.href = "/auth/login";
     return;
   }
@@ -627,7 +665,136 @@ async function boot() {
     setupAuthForms();
   } else if (page === "upload") {
     await bootUpload();
+  } else if (page === "studio") {
+    setupStudioForm();
+    await bootStudio();
   }
 }
 
 boot();
+
+async function bootStudio() {
+  await loadProfile();
+  
+  const gate = document.getElementById("studio-gate");
+  const content = document.getElementById("studio-content");
+  
+  if (!state.profile || state.profile.role !== "professor") {
+    gate.classList.remove("hidden");
+    content.classList.add("hidden");
+    return;
+  }
+  
+  gate.classList.add("hidden");
+  content.classList.remove("hidden");
+  
+  await loadStudioVideos();
+}
+
+async function loadStudioVideos() {
+  const tbody = document.getElementById("studio-video-list");
+  if (!tbody) return;
+  
+  try {
+    const res = await requestJson("/videos/me", {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    const videos = res.results || [];
+    
+    if (videos.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding: 24px; text-align: center;">No videos found.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = videos.map(v => `
+      <tr>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          <strong>${escapeHtml(v.title)}</strong><br>
+          <small class="muted">${escapeHtml(v.description || 'No description')}</small>
+        </td>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          ${escapeHtml(v.course || '—')}<br>
+          <small class="muted">${escapeHtml(v.subject || '—')}</small>
+        </td>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          <span class="tag ${v.status === 'ready' ? '' : 'warn'}">${escapeHtml(v.status)}</span>
+        </td>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: right;">
+          <button class="button small ghost" onclick="openEditModal('${v.video_id}', '${escapeHtml(v.title.replace(/'/g, "\\'"))}', '${escapeHtml((v.description || '').replace(/'/g, "\\'"))}', '${escapeHtml((v.course || '').replace(/'/g, "\\'"))}', '${escapeHtml((v.subject || '').replace(/'/g, "\\'"))}', '${escapeHtml((v.tags || []).join(", ").replace(/'/g, "\\'"))}')">Edit</button>
+          <button class="button small error" onclick="deleteStudioVideo('${v.video_id}')">Delete</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = `<tr><td colspan="4" style="padding: 24px; text-align: center; color: var(--error);">Error loading videos: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function deleteStudioVideo(id) {
+  if (!confirm("Are you sure you want to delete this video?")) return;
+  
+  try {
+    await requestJson(`/videos/${id}`, { 
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${state.token}` }
+    });
+    notify("Video deleted", "success");
+    await loadStudioVideos();
+  } catch (err) {
+    notify(err.message, "error");
+  }
+}
+
+function openEditModal(id, title, desc, course, subj, tags) {
+  document.getElementById("edit-video-id").value = id;
+  document.getElementById("edit-title").value = title;
+  document.getElementById("edit-description").value = desc;
+  document.getElementById("edit-course").value = course;
+  document.getElementById("edit-subject").value = subj;
+  document.getElementById("edit-tags").value = tags;
+  
+  document.getElementById("edit-modal").style.display = "flex";
+}
+
+function closeEditModal() {
+  document.getElementById("edit-modal").style.display = "none";
+}
+
+function setupStudioForm() {
+  const form = document.getElementById("edit-form");
+  if (!form) return;
+  
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("edit-video-id").value;
+    const updateBtn = form.querySelector('button[type="submit"]');
+    updateBtn.disabled = true;
+    updateBtn.textContent = "Saving...";
+    
+    try {
+      await requestJson(`/videos/${id}`, {
+        method: "PUT",
+        headers: { 
+          "Authorization": `Bearer ${state.token}`,
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          title: document.getElementById("edit-title").value,
+          description: document.getElementById("edit-description").value,
+          course: document.getElementById("edit-course").value,
+          subject: document.getElementById("edit-subject").value,
+          tags: document.getElementById("edit-tags").value
+        })
+      });
+      notify("Changes saved successfully", "success");
+      closeEditModal();
+      await loadStudioVideos();
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      updateBtn.disabled = false;
+      updateBtn.textContent = "Save Changes";
+    }
+  });
+}
