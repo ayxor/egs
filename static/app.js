@@ -54,10 +54,18 @@ function updateHeaderSession() {
   const authLink = document.getElementById("auth-link");
   const uploadLink = document.getElementById("nav-upload");
   const studioLink = document.getElementById("nav-studio");
+  const searchForm = document.getElementById("nav-search-form");
   
   if (!chip || !authLink) {
     return;
   }
+  
+  if (state.token) {
+    if (searchForm) searchForm.classList.remove("hidden");
+  } else {
+    if (searchForm) searchForm.classList.add("hidden");
+  }
+  
   if (state.profile) {
     chip.textContent = `${state.profile.name} · ${state.profile.role}`;
     if (uploadLink) {
@@ -223,14 +231,41 @@ function renderVideoCards(targetId) {
 }
 
 function setupSearch() {
-  const form = document.getElementById("search-form");
-  const input = document.getElementById("search-input");
+  const form = document.getElementById("nav-search-form");
+  const input = document.getElementById("nav-search-input");
+  
   if (!form || !input) {
     return;
   }
+  
+  // Fill the input if we came from a query param
+  const urlParams = new URLSearchParams(window.location.search);
+  const q = urlParams.get("q");
+  if (q && page === "library") {
+    input.value = q;
+    state.query = q;
+    // We already call loadVideos in bootHomeOrLibrary
+  }
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    state.query = input.value.trim();
+    const query = input.value.trim();
+    if (page !== "library") {
+      window.location.href = `/library?q=${encodeURIComponent(query)}`;
+      return;
+    }
+    
+    // If we're already on the library page, just search in place
+    state.query = query;
+    // Update the URL to reflect the search without reloading
+    const newUrl = new URL(window.location);
+    if (query) {
+      newUrl.searchParams.set("q", query);
+    } else {
+      newUrl.searchParams.delete("q");
+    }
+    window.history.pushState({}, "", newUrl);
+    
     await loadVideos();
     renderVideoCards("video-grid");
   });
@@ -635,7 +670,6 @@ function setupUploadForm() {
 async function bootHomeOrLibrary() {
   await loadVideos();
   renderVideoCards("video-grid");
-  setupSearch();
   setupFilters();
 }
 
@@ -649,6 +683,7 @@ async function boot() {
   updateHeaderSession();
   await loadProfile();
   updateHeaderSession();
+  setupSearch();
 
   // Enforce authentication for protected pages
   if (["library", "watch", "upload", "studio"].includes(page) && !state.token) {

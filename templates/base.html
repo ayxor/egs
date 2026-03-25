@@ -12,7 +12,7 @@
 <body data-page="{{ page_name }}">
   <div class="bg-layer"></div>
   <header class="site-header">
-    <div class="container nav-wrap">
+    <div class="nav-wrap">
       <a class="brand" href="/">
         <span class="brand-mark">U</span>
         <span class="brand-text">
@@ -27,6 +27,18 @@
         <a href="/upload" id="nav-upload" class="nav-link hidden{% if page_name == 'upload' %} active{% endif %}">Upload</a>
         <a href="/studio" id="nav-studio" class="nav-link hidden{% if page_name == 'studio' %} active{% endif %}">Studio</a>
       </nav>
+
+      <form class="nav-search-form hidden" id="nav-search-form">
+        <div class="nav-search-container">
+          <input type="search" name="q" id="nav-search-input" placeholder="Search videos...">
+          <button type="submit" class="nav-search-btn" aria-label="Search">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+        </div>
+      </form>
 
       <div class="header-actions">
         <a class="button ghost" href="/auth/login" id="auth-link">Sign In</a>
