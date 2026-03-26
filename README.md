@@ -29,26 +29,43 @@ The UAStream Video Platform addresses these gaps through a modular, service-orie
 
 ## Architecture
 
-The platform follows an orchestration pattern. The **Composer** is the single external entry point and the sole orchestrator of all other services. No service calls another service directly.
+The platform is built on a strict **Orchestration Pattern** utilizing highly decoupled, agnostic microservices. The **Composer** acts as the central brain, API gateway, and sole orchestrator. 
 
-```
-Client
-  │
-  ▼
-Composer  ──►  IAM (Keycloak)
-  │
-  ├──►  Object Storage
-  ├──►  Video Editor
-  └──►  Notifications
+A core principle of this architecture is **Strict Service Isolation** (the "Pull/Polling Model"). Worker services like the **Video Editor** and **Object Storage** are entirely stateless, sandboxed, and agnostic. They *never* initiate outbound network requests to other internal services (no webhooks, no callbacks, no shared volumes). They simply expose HTTP endpoints, receive payloads, execute their isolated tasks, and wait for the orchestrator to pull the results.
+
+```text
+       ┌──────────────┐
+       │  Web Client  │
+       └──────┬───────┘
+              │ (HTTP/REST & SSE)
+              ▼
+       ┌──────────────┐
+       │   Composer   │ (API Gateway & Orchestrator)
+       └──────┬───────┘
+              │
+    ┌─────────┼─────────┬─────────┐
+    ▼         ▼         ▼         ▼
+  IAM       Editor   Storage    Notify
+(Keycloak) (No call) (No call) (No call)
+           (out)     (out)     (out)
 ```
 
-| Service | Responsibility |
-|---|---|
-| [Composer](../../tree/composer) | API gateway, business logic, metadata database, orchestration |
-| [IAM / Keycloak](../../tree/iam-keycloak) | Identity and access management, JWT issuance and signing |
-| [Object Storage](../../tree/object-storage) | Binary file storage, presigned URL generation |
-| [Video Editor](../../tree/video-editor) | Asynchronous video processing with real-time SSE progress |
-| [Notifications](../../tree/notifications) | Transactional email delivery via templates |
+### The "Pull" Data Flow (Video Processing Example)
+To guarantee isolation, worker services completely lack awareness of the ecosystem. The flow is strictly top-down:
+1. **Ingest & Dispatch:** The Composer receives a raw video from the user and HTTP `POST`s the binary payload directly to the Video Editor along with the requested edit operations (e.g., watermark, trim).
+2. **Isolated Processing:** The Editor saves the file to its own ephemeral storage (`/tmp/video_editor_jobs`) and begins asynchronous processing via FFmpeg. It synchronously returns a generic `job_id`.
+3. **Progress Polling (SSE):** The Composer connects to the Editor's Server-Sent Events (SSE) endpoint (`GET /jobs/<job_id>/progress`) to read real-time encoding progress and seamlessly pipes this stream back to the client browser.
+4. **Result Extraction:** Once the Editor's SSE stream reports `status: "done"`, the Composer makes explicit HTTP `GET` requests to download the generated `dst.mp4` and `thumb.jpg` bytes from the Editor.
+5. **Final Storage:** The Composer then uploads these artifacts to the Object Storage service, updates its local metadata database, and signals completion.
+
+### Service Roles
+| Service | State Level | Responsibility |
+|---|---|---|
+| **[Composer](../../tree/composer)** | Stateful (DB) | The sole orchestrator. Manages API traffic, verifies JWT boundaries, coordinates file transfers across containers, and handles all business logic. |
+| **[Video Editor](../../tree/video-editor)** | Ephemeral / Sandbox | An agnostic worker. Exposes endpoints to ingest file bytes, runs heavy `ffmpeg` tasks, and passively serves finished files. Zero knowledge of the parent platform. |
+| **[Object Storage](../../tree/object-storage)** | Persistent (Disk) | Dumb blob storage. Safely stores binary files and generates presigned URLs for client video playback. |
+| **[IAM / Keycloak](../../tree/iam-keycloak)** | Persistent (DB) | Identity Provider. Issues JWTs and enforces user roles. |
+| **[Notifications](../../tree/notifications)** | Stateless | Provides an endpoint to shoot out standardized emails and events on command. |
 
 ---
 
