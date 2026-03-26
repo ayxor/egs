@@ -161,6 +161,7 @@ function mapApiVideos(results = []) {
     tags: [...(video.tags || []), "recent"],
     duration: "Lecture",
     views: "Scoped access",
+    thumbnail_url: video.thumbnail_url,
     accent: idx % 2
       ? "linear-gradient(135deg, #2a7b77, #7bc6be)"
       : "linear-gradient(135deg, #d6603b, #ebb18f)",
@@ -208,7 +209,7 @@ function renderVideoCards(targetId) {
   host.innerHTML = videos
     .map((video) => `
       <article class="video-card card">
-        <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.accent};">
+        <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
           <span class="badge">${escapeHtml(video.subject)}</span>
           <span class="duration">${escapeHtml(video.duration)}</span>
         </a>
@@ -353,29 +354,29 @@ async function setupWatchPage() {
     recs.sort(() => 0.5 - Math.random());
     
     // Fill up to 6 videos with dummy data if we don't have enough real videos
-    if (recs.length < 6) {
-      const dummyTitles = ["Advanced Mathematics", "Physics 101", "Introduction to Biology", "Computer Science Principles", "Modern History", "Philosophy of Science"];
-      const dummyProfs = ["Dr. Smith", "Prof. Johnson", "Dr. Williams", "Prof. Brown", "Dr. Davis", "Prof. Miller"];
-      const colors = ["#d7623d", "#efb08c", "#4CAF50", "#2196F3", "#9C27B0", "#FF9800", "#e91e63", "#00bcd4"];
-      
-      const needed = 6 - recs.length;
-      for (let i = 0; i < needed; i++) {
-        const rIndex = Math.floor(Math.random() * dummyTitles.length);
-        recs.push({
-          id: "dummy-" + Date.now() + "-" + i,
-          title: dummyTitles[rIndex],
-          professor: dummyProfs[rIndex],
-          course: "General Studies",
-          accent: colors[Math.floor(Math.random() * colors.length)]
-        });
-      }
-    }
+    // if (recs.length < 6) {
+    //   const dummyTitles = ["Advanced Mathematics", "Physics 101", "Introduction to Biology", "Computer Science Principles", "Modern History", "Philosophy of Science"];
+    //   const dummyProfs = ["Dr. Smith", "Prof. Johnson", "Dr. Williams", "Prof. Brown", "Dr. Davis", "Prof. Miller"];
+    //   const colors = ["#d7623d", "#efb08c", "#4CAF50", "#2196F3", "#9C27B0", "#FF9800", "#e91e63", "#00bcd4"];
+    //   
+    //   const needed = 6 - recs.length;
+    //   for (let i = 0; i < needed; i++) {
+    //     const rIndex = Math.floor(Math.random() * dummyTitles.length);
+    //     recs.push({
+    //       id: "dummy-" + Date.now() + "-" + i,
+    //       title: dummyTitles[rIndex],
+    //       professor: dummyProfs[rIndex],
+    //       course: "General Studies",
+    //       accent: colors[Math.floor(Math.random() * colors.length)]
+    //     });
+    //   }
+    // }
 
     recHost.innerHTML = recs
       .slice(0, 8)
       .map((video) => `
         <a class="recommend-item" href="/watch/${encodeURIComponent(video.id)}">
-          <span class="rec-thumb" style="background:${video.accent};"></span>
+          <span class="rec-thumb" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);"></span>
           <span>
             <strong>${escapeHtml(video.title)}</strong>
             <small>${escapeHtml(video.professor)} · ${escapeHtml(video.course)}</small>
@@ -668,6 +669,17 @@ function setupUploadForm() {
 }
 
 async function bootHomeOrLibrary() {
+  if (!state.token) {
+    const grid = document.getElementById("video-grid");
+    if (grid) grid.innerHTML = "";
+    
+    // Also remove the "Trending Lectures" section on home page if not logged in
+    if (page === "home") {
+        const trendingTitle = document.querySelector(".section-head");
+        if (trendingTitle) trendingTitle.style.display = "none";
+    }
+    return;
+  }
   await loadVideos();
   renderVideoCards("video-grid");
   setupFilters();

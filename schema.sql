@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS videos (
     storage_bucket          TEXT        NOT NULL,
     raw_storage_key         TEXT,
     processed_storage_key   TEXT,
+    thumbnail_key           TEXT,
     status                  TEXT        NOT NULL DEFAULT 'uploaded'
                                         CHECK (status IN ('uploading','uploaded','processing','ready','failed')),
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),

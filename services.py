@@ -92,21 +92,38 @@ def _editor_headers():
     return {"X-API-Key": config.VIDEO_EDITOR_API_KEY}
 
 
-def create_job(src_url, dst_url, progress_url, operations):
+def create_job(file_bytes, operations):
     """Submit a processing job to the Video Editor."""
+    import json
+    files = {'file': ('source.mp4', file_bytes, 'video/mp4')}
+    data = {'operations': json.dumps(operations)}
     resp = requests.post(
         f"{config.VIDEO_EDITOR_URL}/jobs",
-        headers=_editor_headers(),
-        json={
-            "src_url": src_url,
-            "dst_url": dst_url,
-            "progress_url": progress_url,
-            "operations": operations,
-        },
-        timeout=10,
+        headers={"X-API-Key": config.VIDEO_EDITOR_API_KEY}, # Requests sets Content-Type boundary
+        files=files,
+        data=data,
+        timeout=60, # Higher timeout for video uploads
     )
     resp.raise_for_status()
     return resp.json()
+
+def download_job_result(job_id):
+    resp = requests.get(
+        f"{config.VIDEO_EDITOR_URL}/jobs/{job_id}/result",
+        headers=_editor_headers(),
+        stream=True
+    )
+    resp.raise_for_status()
+    return resp.content
+
+def download_job_thumbnail(job_id):
+    resp = requests.get(
+        f"{config.VIDEO_EDITOR_URL}/jobs/{job_id}/thumbnail",
+        headers=_editor_headers(),
+        stream=True
+    )
+    resp.raise_for_status()
+    return resp.content
 
 
 def stream_job_progress(job_id):

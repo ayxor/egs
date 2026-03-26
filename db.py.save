@@ -1,6 +1,16 @@
+ \x1bOo
+ cat /home/joaquima/egs/egs/branches/composer/services.py | grep -i "def create_job" -A 10
+ \x1bOo
 """Database layer — PostgreSQL connection pool and query functions."""
 
 import os
+ cat /home/joaquima/egs/egs/branches/composer/db.py | grep -n "def create_processing_job" -A 10
+ cat /home/joaquima/egs/egs/branches/video-editor/app.py | grep -n "def _process_job" -A 40
+ kill $(jobs -p)
+ cat /home/joaquima/egs/egs/branches/video-editor/app.py | grep -n "threading.Thread(target=_process_job," -B 5 -A 5
+ cat /home/joaquima/egs/egs/branches/video-editor/app.py | grep -n "def submit_job" -A 25
+ docker ps
+ ls -la /home/joaquima/egs/egs
 import logging
 from contextlib import contextmanager
 
@@ -128,7 +138,7 @@ def get_videos_by_uploader(uploader_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at
+                SELECT id, title, description, tags, course, subject, status, created_at
                 FROM videos
                 WHERE uploader_id = %s AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -184,7 +194,7 @@ def search_videos(institution, q=None, course=None, subject=None,
             cur.execute(
                 f"""
                 SELECT id, title, description, tags, course, subject,
-                       uploader_id, status, storage_bucket, thumbnail_key, created_at
+                       uploader_id, created_at
                 FROM videos
                 WHERE {where}
                 ORDER BY created_at DESC
@@ -209,16 +219,7 @@ def delete_video(video_id):
 def update_video_status(video_id, status, processed_storage_key=None, thumbnail_key=None):
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            if processed_storage_key and thumbnail_key:
-                cur.execute(
-                    """
-                    UPDATE videos
-                    SET status = %s, processed_storage_key = %s, thumbnail_key = %s, updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (status, processed_storage_key, thumbnail_key, video_id),
-                )
-            elif processed_storage_key:
+            if processed_storage_key:
                 cur.execute(
                     """
                     UPDATE videos

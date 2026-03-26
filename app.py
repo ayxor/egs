@@ -563,15 +563,20 @@ def upload_video_with_processing():
     raw_key = f"raw/{video_uuid}.mp4"
     processed_key = f"processed/{video_uuid}.mp4"
 
-    # 1) Ensure bucket + upload raw file
+    thumb_key = f"thumbnails/{video_uuid}.jpg"
+    
+    # 1) Read file bytes into memory
+    file_bytes = file.read()
+    
+    # 2) Ensure bucket + upload raw file
     services.ensure_bucket(bucket)
     try:
-        services.upload_object(bucket, raw_key, file.read())
+        services.upload_object(bucket, raw_key, file_bytes)
     except Exception as exc:
         logger.error("Upload to Object Storage failed: %s", exc)
         return jsonify({"error": "failed to upload video"}), 502
 
-    # 2) Create video record (status: processing)
+    # 3) Create video record (status: processing)
     video = db.create_video(
         uploader_id=user["id"],
         institution=institution,
@@ -586,18 +591,10 @@ def upload_video_with_processing():
     )
     video_id = str(video["id"])
 
-    # 3) Provide internal proxy URLs for source and destination to ensure all traffic goes through Composer
-    safe_bucket = quote(bucket)
-    src_url = f"{config.COMPOSER_BASE_URL}/internal/storage/{safe_bucket}/{raw_key}"
-    dst_url = f"{config.COMPOSER_BASE_URL}/internal/storage/{safe_bucket}/{processed_key}"
-
-    # 4) Submit job to Video Editor
-    progress_url = f"{config.COMPOSER_BASE_URL}/internal/jobs/progress"
+    # 4) Submit job strictly as a direct upload (no callbacks)
     try:
         job_resp = services.create_job(
-            src_url=src_url,
-            dst_url=dst_url,
-            progress_url=progress_url,
+            file_bytes=file_bytes,
             operations=operations,
         )
     except Exception as exc:
@@ -627,11 +624,31 @@ def upload_video_with_processing():
                 status = event_data.get("status")
 
                 if status == "done":
-                    # Finalise video
-                    db.update_video_status(video_id, "ready", processed_key)
-                    db.update_processing_job(external_job_id, "done", 100)
+                    # Composer acts as the active puller
+                    try:
+                        # Pull final video
+                        processed_bytes = services.download_job_result(external_job_id)
+                        services.upload_object(bucket, processed_key, processed_bytes)
+                        # Pull thumbnail
+                        try:
+                            thumb_bytes = services.download_job_thumbnail(external_job_id)
+                            services.upload_object(bucket, thumb_key, thumb_bytes)
+                        except Exception as e:
+                            logger.error("Failed to pull thumbnail: %s", e)
+                            
+                        # Finalise video
+                        db.update_video_status(video_id, "ready", processed_key, thumbnail_key=thumb_key)
+                        db.update_processing_job(external_job_id, "done", 100)
+                    except Exception as e:
+                        logger.error("Failed to fetch Video Editor result: %s", e)
+                        db.update_video_status(video_id, "failed")
+                        db.update_processing_job(external_job_id, "failed", 0, str(e))
+                        yield f"data: {json.dumps({'status': 'failed', 'error': 'Failed retrieving result.'})}\n\n"
+                        return
+
                     event_data["video_id"] = video_id
                     yield f"data: {json.dumps(event_data)}\n\n"
+                    
                     # Send notification
                     services.send_email(
                         to=user["email"],
@@ -682,6 +699,7 @@ def list_my_videos_endpoint():
                 "course": v["course"],
                 "subject": v["subject"],
                 "status": v["status"],
+                "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
             }
             for v in videos
@@ -763,6 +781,7 @@ def list_videos_endpoint():
                 "course": v["course"],
                 "subject": v["subject"],
                 "uploader_id": str(v["uploader_id"]),
+                "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
             }
             for v in results
@@ -814,6 +833,7 @@ def get_video_endpoint(video_id):
         "course": video["course"],
         "subject": video["subject"],
         "uploader_id": str(video["uploader_id"]),
+        "thumbnail_url": f"/internal/storage/{quote(video['storage_bucket'])}/{video['thumbnail_key']}" if video.get("thumbnail_key") else None,
         "created_at": video["created_at"].isoformat() if video["created_at"] else None,
         "stream_url": stream_url,
     }), 200
@@ -894,7 +914,8 @@ def receive_job_progress():
             if status == "done":
                 # Use the key stored when the job was created
                 processed_key = job.get("processed_key") or f"processed/{vid}.mp4"
-                db.update_video_status(vid, "ready", processed_key)
+                thumbnail_key = processed_key.replace("processed/", "thumbnails/").replace(".mp4", ".jpg")
+                db.update_video_status(vid, "ready", processed_key, thumbnail_key=thumbnail_key)
             else:
                 db.update_video_status(vid, "failed")
 
