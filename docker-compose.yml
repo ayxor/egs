@@ -78,6 +78,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      object-storage:
+        condition: service_started
+      video-editor:
+        condition: service_started
+      notifications:
+        condition: service_started
     environment:
       DATABASE_URL: "postgresql://composer:composer@db:5432/composer"
       KEYCLOAK_URL: "http://keycloak:8080"
@@ -126,6 +134,14 @@ services:
     environment:
       NOTIFICATIONS_API_KEY: "stub-api-key"
       DATABASE_URL: "sqlite:////app/notifications.db"
+      NOTIFICATIONS_BASE_URL: "http://notifications:8080"
+      SMTP_HOST: "smtp.gmail.com"
+      SMTP_PORT: "587"
+      SMTP_USER: "egsnotificationsservice@gmail.com"
+      SMTP_PASSWORD: "thockzhzntwjcaxe"
+      SMTP_FROM: "egsnotificationsservice@gmail.com"
+      SMTP_USE_TLS: "true"
+      SMTP_USE_SSL: "false"
 
 volumes:
   pgdata:
