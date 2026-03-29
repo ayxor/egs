@@ -1,0 +1,18 @@
+{% extends "_base.html" %}
+
+{% block title %}Upload concluído{% endblock %}
+{% block header_title %}Upload concluído ✅{% endblock %}
+
+{% block content %}
+<p>Olá, <strong>{{ name }}</strong>!</p>
+<p>
+  O upload do teu vídeo foi concluído com sucesso e está a ser processado.
+</p>
+<p>Vídeo submetido:</p>
+<div class="highlight">{{ title }}</div>
+<p>
+  Receberás uma notificação quando o processamento estiver terminado e o vídeo
+  estiver disponível na plataforma.
+</p>
+<p>Obrigado!</p>
+{% endblock %}

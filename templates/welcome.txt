@@ -1,0 +1,7 @@
+Olá, {{ name }}!
+
+A tua conta foi criada com sucesso. Estamos muito contentes por teres juntado a nós.
+
+Podes começar a utilizar a plataforma de imediato. Se tiveres alguma dúvida, não hesites em contactar o suporte.
+
+Bem-vindo a bordo!

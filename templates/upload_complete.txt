@@ -1,0 +1,9 @@
+Olá, {{ name }}!
+
+O upload do teu vídeo foi concluído com sucesso e está a ser processado.
+
+Vídeo submetido: {{ title }}
+
+Receberás uma notificação quando o processamento estiver terminado e o vídeo estiver disponível na plataforma.
+
+Obrigado!
