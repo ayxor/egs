@@ -1,0 +1,19 @@
+{% extends "_base.html" %}
+
+{% block title %}Novo vídeo disponível{% endblock %}
+{% block header_title %}Novo vídeo disponível 🎬{% endblock %}
+
+{% block content %}
+<p>Olá, <strong>{{ name }}</strong>!</p>
+<p>
+  Um novo vídeo foi adicionado à disciplina <strong>{{ course }}</strong> por
+  <strong>{{ professor_name }}</strong>.
+</p>
+<p>Vídeo:</p>
+<div class="highlight">{{ title }}</div>
+<p>
+  O vídeo já está disponível para visualização na plataforma. Acede à tua conta
+  para começar a assistir.
+</p>
+<p>Obrigado!</p>
+{% endblock %}

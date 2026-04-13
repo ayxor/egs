@@ -1,0 +1,9 @@
+Olá, {{ name }}!
+
+Um novo vídeo foi adicionado à disciplina {{ course }} por {{ professor_name }}.
+
+Vídeo: {{ title }}
+
+O vídeo já está disponível para visualização na plataforma. Acede à tua conta para começar a assistir.
+
+Obrigado!
