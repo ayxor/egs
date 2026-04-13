@@ -9,3 +9,4 @@ docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh create users -r egs -s us
 docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh set-password -r egs --username student@ua.pt --new-password student
 docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh update users/$(docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh get users -r egs -q username=student@ua.pt --fields id --format csv --noquotes) -r egs -s 'attributes={"role":["student"]}'
 echo "Done!"
+docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh add-roles -r egs --uusername service-account-egs-platform --cclientid realm-management --rolename manage-users
