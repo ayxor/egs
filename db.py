@@ -89,6 +89,14 @@ def get_user_by_email(email):
             )
             return cur.fetchone()
 
+def get_students_by_course(institution, course):
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM users WHERE institution = %s AND course = %s AND role = 'student' AND is_active = TRUE",
+                (institution, course),
+            )
+            return cur.fetchall()
 
 # ---------------------------------------------------------------------------
 # Videos

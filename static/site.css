@@ -530,7 +530,8 @@ select {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
+
 }
 
 .gate-message {

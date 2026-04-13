@@ -461,6 +461,24 @@ def _parse_tags():
     return tags
 
 
+def _notify_students(title, course, institution, uploader_name):
+    if not course:
+        return
+    students = db.get_students_by_course(institution, course)
+    for student in students:
+        services.send_email(
+            to=student["email"],
+            subject=f"Novo vídeo de {course}: {title}",
+            template="new_video",
+            data={
+                "name": student["name"],
+                "course": course,
+                "professor_name": uploader_name,
+                "title": title
+            },
+        )
+
+
 @app.route("/videos", methods=["POST"])
 def upload_video_endpoint():
     """Upload a video without Video Editor processing."""
@@ -519,6 +537,7 @@ def upload_video_endpoint():
         template="upload_complete",
         data={"name": user["name"], "title": title},
     )
+    _notify_students(title, course, institution, user["name"])
 
     return jsonify({"video_id": str(video["id"])}), 201
 
@@ -656,6 +675,7 @@ def upload_video_with_processing():
                         template="upload_complete",
                         data={"name": user["name"], "title": title},
                     )
+                    _notify_students(title, course, institution, user["name"])
                     return
                 elif status == "failed":
                     db.update_video_status(video_id, "failed")

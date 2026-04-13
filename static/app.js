@@ -55,6 +55,7 @@ function updateHeaderSession() {
   const uploadLink = document.getElementById("nav-upload");
   const studioLink = document.getElementById("nav-studio");
   const searchForm = document.getElementById("nav-search-form");
+  const registerLink = document.getElementById("nav-register-link");
   
   if (!chip || !authLink) {
     return;
@@ -62,8 +63,10 @@ function updateHeaderSession() {
   
   if (state.token) {
     if (searchForm) searchForm.classList.remove("hidden");
+    if (registerLink) registerLink.classList.add("hidden");
   } else {
     if (searchForm) searchForm.classList.add("hidden");
+    if (registerLink) registerLink.classList.remove("hidden");
   }
   
   if (state.profile) {
@@ -393,8 +396,14 @@ function setupAuthTabs() {
       const target = tab.dataset.authTab;
       document.querySelectorAll("[data-auth-tab]").forEach((node) => node.classList.toggle("active", node === tab));
       document.querySelectorAll("[data-auth-panel]").forEach((panel) => panel.classList.toggle("hidden", panel.dataset.authPanel !== target));
+      window.location.hash = target;
     });
   });
+
+  if (window.location.hash === "#register") {
+    const registerTab = document.querySelector('[data-auth-tab="register"]');
+    if (registerTab) registerTab.click();
+  }
 }
 
 function setupAuthForms() {
@@ -440,9 +449,19 @@ function setupAuthForms() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (status) {
-          status.textContent = "Account created. You can now log in.";
-        }
+        
+        // Hide form and status
+        registerForm.classList.add("hidden");
+        if (status) status.classList.add("hidden");
+        
+        // Change title
+        const authTitle = document.getElementById("auth-title");
+        if (authTitle) authTitle.textContent = "Registration Complete";
+        
+        // Show success div
+        const successBlock = document.getElementById("register-success");
+        if (successBlock) successBlock.classList.remove("hidden");
+        
         notify("Account created successfully.", "success");
       } catch (error) {
         if (status) {
