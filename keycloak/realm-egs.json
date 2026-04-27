@@ -37,6 +37,7 @@
       "frontchannelLogout": false,
       "protocol": "openid-connect",
       "redirectUris": [
+        "http://uastream.com/*",
         "http://localhost:8091/*", "http://localhost:8090/*",
         "http://127.0.0.1:8090/*",
         "http://localhost:8080/*",
@@ -49,7 +50,7 @@
         "http://127.0.0.1:8080"
       ],
       "attributes": {
-        "post.logout.redirect.uris": "http://localhost:8091/*##http://localhost:8090/*##http://127.0.0.1:8090/*##http://localhost:8080/*##http://127.0.0.1:8080/*",
+        "post.logout.redirect.uris": "http://uastream.com/*##http://localhost:8091/*##http://localhost:8090/*##http://127.0.0.1:8090/*##http://localhost:8080/*##http://127.0.0.1:8080/*",
         "access.token.lifespan": "3600"
       },
       "protocolMappers": [
