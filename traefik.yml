@@ -1,0 +1,20 @@
+api:
+  # Dashboard disponível em http://localhost:8080/dashboard/
+  # Útil para debugging — ver routers, services e middlewares activos.
+  dashboard: true
+  insecure: true   # Em produção mudar para false e proteger com auth
+
+entryPoints:
+  web:
+    address: ":80"
+
+providers:
+  docker:
+    # Traefik lê as labels dos containers automaticamente
+    exposedByDefault: false   # Só expõe containers que tenham traefik.enable=true
+    network: main_public-net   # Nome completo com prefixo do projecto Docker Compose
+
+log:
+  level: INFO
+
+accessLog: {}   # Liga logs de acesso (útil para ver requests)

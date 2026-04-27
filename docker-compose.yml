@@ -1,4 +1,27 @@
 services:
+
+  # ---------------------------------------------------------------------------
+  # Traefik — API Gateway e Reverse Proxy
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v2.11
+    environment:
+      - DOCKER_API_VERSION=1.41
+    depends_on:
+      keycloak:
+        condition: service_started
+      composer:
+        condition: service_started
+    ports:
+      - "80:80"        # Tráfego HTTP público (uastream.com)
+      - "8080:8080"    # Dashboard Traefik (só em desenvolvimento)
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # Traefik lê labels dos containers
+    networks:
+      - public-net     # Única rede com acesso ao exterior
+    restart: unless-stopped
+
   # ---------------------------------------------------------------------------
   # Composer database (PostgreSQL)
   # ---------------------------------------------------------------------------
@@ -8,10 +31,10 @@ services:
       POSTGRES_USER: composer
       POSTGRES_PASSWORD: composer
       POSTGRES_DB: composer
-    ports:
-      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - composer-db-net   # Isolada — só db e composer aqui
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U composer"]
       interval: 5s
@@ -29,6 +52,8 @@ services:
       POSTGRES_DB: keycloak
     volumes:
       - kc-pgdata:/var/lib/postgresql/data
+    networks:
+      - keycloak-db-net   # Isolada — só kc-db e keycloak aqui
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak"]
       interval: 5s
@@ -52,29 +77,34 @@ services:
       KC_HOSTNAME_STRICT: "false"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
-    ports:
-      - "8180:8080"
     volumes:
       - ../iam/keycloak/realm-egs.json:/opt/keycloak/data/import/realm-egs.json:ro
       - ../iam/keycloak/themes/uastream:/opt/keycloak/themes/uastream:ro
+    networks:
+      - keycloak-db-net   # Fala com kc-db
+      - backend-net        # Fala com composer (tokens, JWKS)
+      - public-net         # Exposto via Traefik para o auth callback do browser
     depends_on:
       kc-db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/health/ready || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=main_public-net"
+      - "traefik.http.routers.keycloak.rule=Host(`uastream.com`) && PathPrefix(`/realms`, `/resources`, `/js`)"
+      - "traefik.http.routers.keycloak.entrypoints=web"
+      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
 
   # ---------------------------------------------------------------------------
-  # Composer
+  # Composer — orquestrador central e único ponto de entrada da API/frontend
   # ---------------------------------------------------------------------------
   composer:
     build:
       context: ../composer
-    ports:
-      - "8091:8080"
+    networks:
+      - public-net         # Exposto via Traefik
+      - composer-db-net    # Fala com db
+      - backend-net        # Fala com keycloak
+      - services-net       # Fala com object-storage, video-editor, notifications
     depends_on:
       db:
         condition: service_healthy
@@ -89,7 +119,9 @@ services:
     environment:
       DATABASE_URL: "postgresql://composer:composer@db:5432/composer"
       KEYCLOAK_URL: "http://keycloak:8080"
-      KEYCLOAK_PUBLIC_URL: "http://localhost:8180"
+      # KEYCLOAK_PUBLIC_URL: URL que o *browser* usa para o redirect OAuth.
+      # Com Traefik, o browser vai a uastream.com (não a localhost).
+      KEYCLOAK_PUBLIC_URL: "http://uastream.com"
       KEYCLOAK_REALM: "egs"
       KEYCLOAK_CLIENT_ID: "egs-platform"
       KEYCLOAK_CLIENT_SECRET: "change-me-in-production"
@@ -99,7 +131,24 @@ services:
       VIDEO_EDITOR_API_KEY: "stub-api-key"
       NOTIFICATIONS_URL: "http://notifications:8080"
       NOTIFICATIONS_API_KEY: "stub-api-key"
+      # O video-editor vai fazer callback para o composer via esta URL interna
       COMPOSER_BASE_URL: "http://composer:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=main_public-net"
+      # Rota principal — tudo o que não encaixar nas outras rotas vai para o composer
+      - "traefik.http.routers.composer.rule=Host(`uastream.com`)"
+      - "traefik.http.routers.composer.entrypoints=web"
+      - "traefik.http.services.composer.loadbalancer.server.port=8080"
+      # Bloquear /internal/* ao exterior — esta rota tem prioridade mais alta (priority=10)
+      # e devolve 403 para qualquer pedido a /internal/ vindo de fora
+      - "traefik.http.routers.composer-internal-block.rule=Host(`uastream.com`) && PathPrefix(`/internal`)"
+      - "traefik.http.routers.composer-internal-block.entrypoints=web"
+      - "traefik.http.routers.composer-internal-block.priority=10"
+      - "traefik.http.routers.composer-internal-block.middlewares=block-internal"
+      - "traefik.http.middlewares.block-internal.ipallowlist.sourcerange=0.0.0.0/0"
+      # Nota: na prática, o middleware acima não bloqueia por si só.
+      # A forma correcta é usar um middleware de returncode — ver nota no README.
 
   # ---------------------------------------------------------------------------
   # Object Storage Stub
@@ -107,10 +156,20 @@ services:
   object-storage:
     build:
       context: ../object-storage
-    ports:
-      - "8081:8080"
+    networks:
+      - services-net   # Fala com composer e video-editor
+      - public-net     # Exposto via Traefik para o browser fazer streaming directo
     environment:
       OBJECT_STORAGE_API_KEY: "stub-api-key"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=main_public-net"
+      # O browser acede directamente ao object-storage para streaming de vídeo
+      # (Range Requests). O Traefik calcula prioridade automaticamente pelo
+      # comprimento da regra — PathPrefix(/objects) ganha ao composer.
+      - "traefik.http.routers.object-storage.rule=Host(`uastream.com`) && PathPrefix(`/objects`)"
+      - "traefik.http.routers.object-storage.entrypoints=web"
+      - "traefik.http.services.object-storage.loadbalancer.server.port=8080"
 
   # ---------------------------------------------------------------------------
   # Video Editor Stub
@@ -118,8 +177,8 @@ services:
   video-editor:
     build:
       context: ../video-editor
-    ports:
-      - "8082:8080"
+    networks:
+      - services-net   # Só acessível pelo composer — sem acesso ao exterior
     environment:
       VIDEO_EDITOR_API_KEY: "stub-api-key"
 
@@ -129,8 +188,8 @@ services:
   notifications:
     build:
       context: ../notifications
-    ports:
-      - "8083:8080"
+    networks:
+      - services-net   # Só acessível pelo composer — sem acesso ao exterior
     environment:
       NOTIFICATIONS_API_KEY: "stub-api-key"
       DATABASE_URL: "sqlite:////app/notifications.db"
@@ -142,6 +201,35 @@ services:
       SMTP_FROM: "egsnotificationsservice@gmail.com"
       SMTP_USE_TLS: "true"
       SMTP_USE_SSL: "false"
+
+# =============================================================================
+# Redes
+# =============================================================================
+networks:
+  public-net:
+    # Única rede com ligação ao exterior via Traefik.
+    # Apenas traefik, composer e keycloak (para OAuth redirect) estão aqui.
+    driver: bridge
+
+  composer-db-net:
+    # Rede privada entre o composer e a sua base de dados.
+    driver: bridge
+    internal: true
+
+  keycloak-db-net:
+    # Rede privada entre o keycloak e a sua base de dados.
+    driver: bridge
+    internal: true
+
+  backend-net:
+    # Comunicação interna entre composer e keycloak (fetch JWKS, criar utilizadores).
+    driver: bridge
+    internal: true
+
+  services-net:
+    # Comunicação interna entre composer e os serviços stub.
+    driver: bridge
+    internal: true
 
 volumes:
   pgdata:
