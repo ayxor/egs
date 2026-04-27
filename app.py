@@ -818,9 +818,9 @@ def get_video_endpoint(video_id):
         )
         stream_url = presign["url"]
         
-        # Rewrite internal object-storage URL to localhost for the frontend client browser
+        # Rewrite internal object-storage URL to public URL for the frontend client browser
         if stream_url and "http://object-storage:8080" in stream_url:
-            stream_url = stream_url.replace("http://object-storage:8080", "http://localhost:8081")
+            stream_url = stream_url.replace("http://object-storage:8080", "http://uastream.com")
             
     except Exception as e:
         stream_url = None; print("PRESIGN ERROR:", e)
