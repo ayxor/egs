@@ -3,6 +3,9 @@
 echo "Authenticating via kcadm..."
 docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user admin --password admin
 
+echo "Granting manage-users to service account..."
+docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh add-roles -r egs --uusername service-account-egs-platform --cclientid realm-management --rolename manage-users || true
+
 echo "Adding professor user..."
 docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh create users -r egs -s username=professor@ua.pt -s enabled=true -s email=professor@ua.pt -s firstName=Professor -s lastName=User || true
 docker exec main-keycloak-1 /opt/keycloak/bin/kcadm.sh set-password -r egs --username professor@ua.pt --new-password professor

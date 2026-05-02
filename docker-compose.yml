@@ -105,6 +105,7 @@ services:
       - composer-db-net    # Fala com db
       - backend-net        # Fala com keycloak
       - services-net       # Fala com object-storage, video-editor, notifications
+      - vault-net
     depends_on:
       db:
         condition: service_healthy
@@ -115,6 +116,8 @@ services:
       video-editor:
         condition: service_started
       notifications:
+        condition: service_started
+      vault:
         condition: service_started
     environment:
       DATABASE_URL: "postgresql://composer:composer@db:5432/composer"
@@ -133,6 +136,8 @@ services:
       NOTIFICATIONS_API_KEY: "stub-api-key"
       # O video-editor vai fazer callback para o composer via esta URL interna
       COMPOSER_BASE_URL: "http://composer:8080"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "token-composer"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=main_public-net"
@@ -151,6 +156,32 @@ services:
       # A forma correcta é usar um middleware de returncode — ver nota no README.
 
   # ---------------------------------------------------------------------------
+  # HashiCorp Vault — Storage for API Keys
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:latest
+    entrypoint: ["vault"]
+    command: ["server", "-dev"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "root"
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    networks:
+      - vault-net
+    ports:
+      - "8200:8200"
+    restart: unless-stopped
+
+  vault-init:
+    image: hashicorp/vault:latest
+    depends_on:
+      - vault
+    networks:
+      - vault-net
+    volumes:
+      - ./vault_init.sh:/vault_init.sh:ro
+    entrypoint: ["/bin/sh", "/vault_init.sh"]
+
+  # ---------------------------------------------------------------------------
   # Object Storage Stub
   # ---------------------------------------------------------------------------
   object-storage:
@@ -159,8 +190,11 @@ services:
     networks:
       - services-net   # Fala com composer e video-editor
       - public-net     # Exposto via Traefik para o browser fazer streaming directo
+      - vault-net
     environment:
       OBJECT_STORAGE_API_KEY: "stub-api-key"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "token-object-storage"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=main_public-net"
@@ -179,8 +213,11 @@ services:
       context: ../video-editor
     networks:
       - services-net   # Só acessível pelo composer — sem acesso ao exterior
+      - vault-net
     environment:
       VIDEO_EDITOR_API_KEY: "stub-api-key"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "token-video-editor"
 
   # ---------------------------------------------------------------------------
   # Notifications Stub
@@ -190,10 +227,14 @@ services:
       context: ../notifications
     networks:
       - services-net   # Só acessível pelo composer — sem acesso ao exterior
+      - public-net     # Exposto via Traefik para links públicos nos emails
+      - vault-net
     environment:
       NOTIFICATIONS_API_KEY: "stub-api-key"
       DATABASE_URL: "sqlite:////app/notifications.db"
-      NOTIFICATIONS_BASE_URL: "http://notifications:8080"
+      NOTIFICATIONS_BASE_URL: "http://uastream.com"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "token-notifications"
       SMTP_HOST: "smtp.gmail.com"
       SMTP_PORT: "587"
       SMTP_USER: "egsnotificationsservice@gmail.com"
@@ -201,6 +242,12 @@ services:
       SMTP_FROM: "egsnotificationsservice@gmail.com"
       SMTP_USE_TLS: "true"
       SMTP_USE_SSL: "false"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=main_public-net"
+      - "traefik.http.routers.notifications.rule=Host(`uastream.com`) && PathPrefix(`/notifications`)"
+      - "traefik.http.routers.notifications.entrypoints=web"
+      - "traefik.http.services.notifications.loadbalancer.server.port=8080"
 
 # =============================================================================
 # Redes
@@ -210,6 +257,11 @@ networks:
     # Única rede com ligação ao exterior via Traefik.
     # Apenas traefik, composer e keycloak (para OAuth redirect) estão aqui.
     driver: bridge
+
+  vault-net:
+    # Rede para serviços acederem ao Vault
+    driver: bridge
+    internal: true
 
   composer-db-net:
     # Rede privada entre o composer e a sua base de dados.

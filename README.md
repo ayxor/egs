@@ -1,91 +1,35 @@
-# UAStream
+# UAStream Platform
 
-A teaching-focused video streaming platform designed to centralise and enhance access to academic lecture content within higher education institutions.
+UAStream is a teaching-focused video streaming platform for higher-education content. Each service lives in its own branch, and the local workspace is expected to mirror that structure.
 
----
+## Branch Layout
 
-## Overview
+Each branch is a service:
 
-### Problem
-
-Lecture recordings are scattered across disconnected platforms, lack structured metadata, and offer no meaningful search capabilities. Students struggle to locate topic-specific content, and institutions have no unified, permission-controlled environment for managing academic video.
-
-### Solution
-
-The UAStream Video Platform addresses these gaps through a modular, service-oriented architecture that integrates identity management, video processing, object storage, and notification delivery into a single cohesive system. The platform is built around loose coupling and clear service boundaries, making it straightforward to operate, extend, and onboard new institutions.
-
-### Key Advantages
-
-| Advantage | Description |
-|---|---|
-| Service-Based Architecture | Each concern is isolated in an independent, replaceable service |
-| Inter-Institution Interoperability | Middleware-driven design supports multiple institutions without coupling |
-| Technology-Agnostic Integration | Services communicate over standard HTTP; no vendor lock-in |
-| Horizontal Scalability | Each service scales independently to meet demand |
-| Reusable Infrastructure | Storage, notifications, and video processing are generic and reusable across projects |
-| Easy Institutional Onboarding | New institutions are provisioned through a single bucket and user registration flow |
-
----
+- `main` - stack composition and Traefik entrypoint
+- `composer` - web app, orchestration, and platform API
+- `iam` - Keycloak realm, theme, and identity configuration
+- `object-storage` - binary object store
+- `video-editor` - asynchronous media processing worker
+- `notifications` - transactional email service
 
 ## Architecture
 
-The platform is built on a strict **Orchestration Pattern** utilizing highly decoupled, agnostic microservices. The **Composer** acts as the central brain, API gateway, and sole orchestrator. 
+The platform uses a strict orchestrator model. Composer is the only application service that coordinates the others directly. IAM handles identity, Object Storage stores binary assets, Video Editor processes media jobs, and Notifications sends email when Composer requests it.
 
-A core principle of this architecture is **Strict Service Isolation** (the "Pull/Polling Model"). Worker services like the **Video Editor** and **Object Storage** are entirely stateless, sandboxed, and agnostic. They *never* initiate outbound network requests to other internal services (no webhooks, no callbacks, no shared volumes). They simply expose HTTP endpoints, receive payloads, execute their isolated tasks, and wait for the orchestrator to pull the results.
+Public traffic goes through Traefik on `http://uastream.com`. Internal services talk over Docker networks (`services-net`); they are not meant to be exposed on localhost for normal use.
 
-```text
-       ┌──────────────┐
-       │  Web Client  │
-       └──────┬───────┘
-              │ (HTTP/REST & SSE)
-              ▼
-       ┌──────────────┐
-       │   Composer   │ (API Gateway & Orchestrator)
-       └──────┬───────┘
-              │
-    ┌─────────┼─────────┬─────────┐
-    ▼         ▼         ▼         ▼
-  IAM       Editor   Storage    Notify
-(Keycloak) (No call) (No call) (No call)
-           (out)     (out)     (out)
-```
+## Security & Secrets Management
 
-### The "Pull" Data Flow (Video Processing Example)
-To guarantee isolation, worker services completely lack awareness of the ecosystem. The flow is strictly top-down:
-1. **Ingest & Dispatch:** The Composer receives a raw video from the user and HTTP `POST`s the binary payload directly to the Video Editor along with the requested edit operations (e.g., watermark, trim).
-2. **Isolated Processing:** The Editor saves the file to its own ephemeral storage (`/tmp/video_editor_jobs`) and begins asynchronous processing via FFmpeg. It synchronously returns a generic `job_id`.
-3. **Progress Polling (SSE):** The Composer connects to the Editor's Server-Sent Events (SSE) endpoint (`GET /jobs/<job_id>/progress`) to read real-time encoding progress and seamlessly pipes this stream back to the client browser.
-4. **Result Extraction:** Once the Editor's SSE stream reports `status: "done"`, the Composer makes explicit HTTP `GET` requests to download the generated `dst.mp4` and `thumb.jpg` bytes from the Editor.
-5. **Final Storage:** The Composer then uploads these artifacts to the Object Storage service, updates its local metadata database, and signals completion.
+API keys for internal communication are managed and securely injected by **HashiCorp Vault**. 
+- Vault runs in complete isolation on the `vault-net` network. It is not exposed to the public internet.
+- A `vault-init` script automatically provisions the KV secrets engine and sets up granular security policies (least-privilege).
+- When Python services boot up, they use an injected `VAULT_TOKEN` to authenticate and fetch their `API_KEY` dynamically into memory using the `hvac` Python library. This ensures zero hardcoded passwords exist in the application code.
 
-### Service Roles
-| Service | State Level | Responsibility |
-|---|---|---|
-| **[Composer](../../tree/composer)** | Stateful (DB) | The sole orchestrator. Manages API traffic, verifies JWT boundaries, coordinates file transfers across containers, and handles all business logic. |
-| **[Video Editor](../../tree/video-editor)** | Ephemeral / Sandbox | An agnostic worker. Exposes endpoints to ingest file bytes, runs heavy `ffmpeg` tasks, and passively serves finished files. Zero knowledge of the parent platform. |
-| **[Object Storage](../../tree/object-storage)** | Persistent (Disk) | Dumb blob storage. Safely stores binary files and generates presigned URLs for client video playback. |
-| **[IAM / Keycloak](../../tree/iam-keycloak)** | Persistent (DB) | Identity Provider. Issues JWTs and enforces user roles. |
-| **[Notifications](../../tree/notifications)** | Stateless | Provides an endpoint to shoot out standardized emails and events on command. |
+## Local Workspace
 
----
+Clone the branches side-by-side so the compose files can resolve sibling paths:
 
-## Team
-
-| Name | NMEC |
-|---|---|
-|André Marques  |87818  |
-|  |  |
-|  |  |
-|  |  |
-
----
-
-## Deployment
-
-To deploy the platform locally, you will need to clone all the service branches side-by-side. Our architecture relies on a mono-repo where each microservice lives in its own branch. 
-
-### 1. Setup the workspace directory structure
-Create a parent directory to hold all the services together:
 ```bash
 mkdir uastream-platform && cd uastream-platform
 
@@ -97,10 +41,31 @@ git clone -b video-editor https://github.com/ayxor/egs.git video-editor
 git clone -b notifications https://github.com/ayxor/egs.git notifications
 ```
 
-### 2. Start the Orchestration
-Once the structure matches, enter the `main` directory and run the global composition:
+## Run The Stack
+
+Start the platform from the `main` branch:
+
 ```bash
 cd main
-docker-compose up -build -d
+docker-compose up -d --build
 ```
-All services are mapped inside the `docker-compose.yml` to build directly from their sibling local directories.
+
+Traefik publishes the public application, Keycloak, notifications, and the storage routes from the compose file. The composer, IAM, storage, editor, and notifications containers are built from the sibling branch directories.
+
+## Service Responsibilities
+
+| Service | Responsibility |
+|---|---|
+| Traefik | Public entrypoint, reverse proxy, load balancing |
+| Vault | Secrets management and dynamic API Key provisioning |
+| Composer | Web UI, user registration, auth flow, metadata, orchestration |
+| IAM | Login, token issuance, user administration, login theme |
+| Object Storage | Bucket/object persistence for raw and processed assets |
+| Video Editor | FFmpeg-based processing jobs and progress tracking |
+| Notifications | Email delivery and email tracking pixel endpoint |
+
+## Notes
+
+- `uastream.com` is the canonical public hostname for the stack.
+- Localhost references are only for internal developer workflows or legacy realm configuration.
+- If you change service URLs, update the compose files and the service README files together.
