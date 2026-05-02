@@ -18,6 +18,22 @@ from datetime import datetime, timedelta, timezone
 
 import mimetypes
 import os
+import hvac
+
+def get_vault_secret(secret_path, env_fallback, default_val="stub-api-key"):
+    vault_addr = os.environ.get("VAULT_ADDR")
+    vault_token = os.environ.get("VAULT_TOKEN")
+    
+    if vault_addr and vault_token:
+        try:
+            client = hvac.Client(url=vault_addr, token=vault_token)
+            if client.is_authenticated():
+                response = client.secrets.kv.v2.read_secret_version(path=secret_path)
+                return response['data']['data']['api_key']
+        except Exception as e:
+            print(f"Failed to fetch {secret_path} from Vault: {e}")
+            
+    return os.environ.get(env_fallback, default_val)
 
 app = Flask(__name__)
 CORS(app)
@@ -48,7 +64,7 @@ def _apply_cors_headers(response):
 # API key auth
 # ---------------------------------------------------------------------------
 
-API_KEY = os.environ.get("OBJECT_STORAGE_API_KEY", "stub-api-key")
+API_KEY = get_vault_secret("object-storage", "OBJECT_STORAGE_API_KEY")
 
 def _require_api_key():
     token = request.args.get("token")

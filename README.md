@@ -1,20 +1,18 @@
 # Object Storage Service
 
-The Object Storage service is a generic binary file store. It is entirely agnostic to the type of content it holds — it has no knowledge of videos, users, institutions, or any other platform concept. It accepts, stores, and serves arbitrary binary objects.
+Object Storage is the binary file store branch. It is agnostic to UAStream business logic and stores arbitrary objects by bucket and key.
 
-This design makes the service reusable beyond the video platform, for instance for storing PDFs, images, or audio files in other projects.
+## Role In The Stack
 
-**This service is accessible only by internal services (Composer, Video Editor) via API key. It does not validate JWTs.**
-
-Objects are organised using a `bucket` as a namespace (one per institution) and a `key` as the file identifier within that bucket (e.g. `raw/abc123.mp4`, `processed/abc123.mp4`).
-
----
+- Composer uploads and reads platform media from here
+- Video Editor writes processed files here
+- The service authenticates with API keys, not JWTs
 
 ## API Reference
 
-Base URL: `http://object-storage:5000`
+Internal base URL: `http://object-storage:5000`
 
-All requests must include the header `X-API-Key: <key>`.
+All requests must include `X-API-Key: <key>`.
 
 ### Buckets
 
@@ -134,4 +132,10 @@ data/
 
 ### Docker
 
-> To be completed.
+The service is built and started from the `object-storage` branch through the `main` stack compose file.
+
+## Notes
+
+- Buckets are used as institution namespaces.
+- Keys map directly to file paths inside each bucket.
+- `uastream.com` is the public hostname for the stack, but object storage itself is an internal service.
