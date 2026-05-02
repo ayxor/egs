@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Create the 'Create account' button
     const registerBtn = document.createElement("a");
-    registerBtn.href = "http://localhost:8091/auth#register";
+    registerBtn.href = "http://uastream.com/auth#register";
     registerBtn.innerText = "Create account";
     
     // Copy the original button's classes
