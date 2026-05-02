@@ -1,43 +1,41 @@
 # Notifications Service
 
-Generic, template-based transactional email delivery service. Completely agnostic to platform business logic — it does not decide when to send emails, to whom, or why. It only sends emails when explicitly instructed by the Composer.
+Notifications is the UAStream transactional email service. It is a small, API-key-protected worker that only sends email when Composer asks it to.
 
-**Accessible only by internal services via API key.**
+## Role In The Stack
 
----
+- Composer is the only service that should call Notifications
+- The service does not decide business events on its own
+- It sends template-based email and records delivery/open status
 
-## How it works
+## How It Works
 
-The service accepts a request with a recipient, subject, template name, and a data object. It persists a `Notification` record, sends the email, and responds with `202 Accepted` and a `notification_id`. That ID can later be used to query the open/read status of the email.
+The service accepts a recipient, subject, template name, and data payload. It stores a `Notification` record, renders the template, sends the email, and returns `202 Accepted` with a `notification_id`.
 
-Each outgoing email embeds an invisible 1×1 tracking pixel. When the recipient opens the email, their mail client fetches the pixel and the service records the `opened_at` timestamp, updating the status from `sent` to `opened`. Open tracking is best-effort — some mail clients block external images.
+Outgoing messages include a tracking pixel so open events can be recorded best-effort. Some mail clients block external images, so open tracking is not guaranteed.
 
----
+## Public URL
 
-## API Reference
+- API docs: `http://uastream.com/openapi/swagger`
+- Public tracking endpoint: `http://uastream.com/notifications/track/...`
 
-Once the service is running, the full interactive API documentation is available at:
-
-```
-http://localhost:8080/openapi/swagger
-```
-
-Click **Authorize** and enter the API key to authenticate requests directly from the browser.
-
-## Deployment
-
-### Run locally
+## Local Run
 
 ```bash
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
 
-### Docker
+## Docker
 
 ```bash
 docker build -t notifications .
 docker run -p 8080:8080 notifications
 ```
+
+## Notes
+
+- SMTP settings are provided by the stack environment, not hardcoded in the service.
+- The service is reachable publicly through Traefik, but it is still treated as an internal platform component.

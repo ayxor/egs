@@ -11,11 +11,11 @@ Run:
     python app.py
 
 FastAPI:
-    http://localhost:8080/openapi/swagger
+    http://uastream.com/openapi/swagger
 
 Environment variables:
     NOTIFICATIONS_API_KEY   Shared secret (default: stub-api-key)
-    NOTIFICATIONS_BASE_URL  Public base URL for tracking pixels (default: http://localhost:8080)
+    NOTIFICATIONS_BASE_URL  Public base URL for tracking pixels (default: http://uastream.com)
     DATABASE_URL            SQLAlchemy DB URL (default: sqlite:///notifications.db)
     SMTP_HOST               SMTP server hostname (default: localhost)
     SMTP_PORT               SMTP server port (default: 587)
@@ -41,21 +41,22 @@ import ssl
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import hvac
 
-# ---------------------------------------------------------------------------
-# Environment Variables
-# ---------------------------------------------------------------------------
-
-os.environ["NOTIFICATIONS_API_KEY"] = "stub-api-key"
-os.environ["NOTIFICATIONS_BASE_URL"] = "http://localhost:8080"
-os.environ["DATABASE_URL"] = "sqlite:///notifications.db"
-os.environ["SMTP_HOST"] = "smtp.gmail.com"
-os.environ["SMTP_PORT"] = "587"
-os.environ["SMTP_USER"] = "egsnotificationsservice@gmail.com"
-os.environ["SMTP_PASSWORD"] = "thockzhzntwjcaxe"
-os.environ["SMTP_FROM"] = "egsnotificationsservice@gmail.com"
-os.environ["SMTP_USE_TLS"] = "true"
-os.environ["SMTP_USE_SSL"] = "false"
+def get_vault_secret(secret_path, env_fallback, default_val="stub-api-key"):
+    vault_addr = os.environ.get("VAULT_ADDR")
+    vault_token = os.environ.get("VAULT_TOKEN")
+    
+    if vault_addr and vault_token:
+        try:
+            client = hvac.Client(url=vault_addr, token=vault_token)
+            if client.is_authenticated():
+                response = client.secrets.kv.v2.read_secret_version(path=secret_path)
+                return response['data']['data']['api_key']
+        except Exception as e:
+            log.warning("Failed to fetch %s from Vault: %s", secret_path, e)
+            
+    return os.environ.get(env_fallback, default_val)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -123,10 +124,10 @@ db = SQLAlchemy(app)
 # API key auth
 # ---------------------------------------------------------------------------
 
-API_KEY = os.environ.get("NOTIFICATIONS_API_KEY", "stub-api-key")
+API_KEY = get_vault_secret("notifications", "NOTIFICATIONS_API_KEY")
 
 # Base URL used to build the tracking pixel URL embedded in emails.
-BASE_URL = os.environ.get("NOTIFICATIONS_BASE_URL", "http://localhost:8080")
+BASE_URL = os.environ.get("NOTIFICATIONS_BASE_URL", "http://uastream.com")
 
 # ---------------------------------------------------------------------------
 # SMTP config

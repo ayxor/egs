@@ -90,7 +90,7 @@ components:
           type: string
           format: uri
           description: URL of the 1x1 tracking pixel embedded in the email HTML body.
-          example: http://notifications:8080/notifications/track/3fa85f64-5717-4562-b3fc-2c963f66afa6.gif
+          example: http://uastream.com/notifications/track/3fa85f64-5717-4562-b3fc-2c963f66afa6.gif
 
     NotificationList:
       type: object
