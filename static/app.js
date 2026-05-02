@@ -1,59 +1,10 @@
-const demoVideos = [
-  {
-    id: "demo-vhdl-1",
-    title: "Introduction to VHDL for Digital Systems",
-    professor: "Professor Silva",
-    subject: "LSD",
-    course: "MIECT",
-    description: "Entity/architecture basics, signals, and a first simulation workflow.",
-    tags: ["recent", "watermarked", "programming"],
-    duration: "42 min",
-    views: "214 students",
-    accent: "linear-gradient(135deg, #d6603b, #ebb18f)",
-  },
-  {
-    id: "demo-net-1",
-    title: "Campus Routing Fundamentals",
-    professor: "Professor Almeida",
-    subject: "Networks",
-    course: "LEI",
-    description: "How packet forwarding works from classrooms to core routers.",
-    tags: ["recent"],
-    duration: "31 min",
-    views: "177 students",
-    accent: "linear-gradient(135deg, #2a7b77, #7bc6be)",
-  },
-  {
-    id: "demo-db-1",
-    title: "Designing Video Metadata Schemas",
-    professor: "Professor Costa",
-    subject: "Databases",
-    course: "LEI",
-    description: "Modeling tags, ownership, institution visibility, and search indexes.",
-    tags: ["programming"],
-    duration: "28 min",
-    views: "129 students",
-    accent: "linear-gradient(135deg, #654237, #e5af88)",
-  },
-  {
-    id: "demo-rtos-1",
-    title: "Real-Time Scheduling in Embedded Systems",
-    professor: "Professor Rocha",
-    subject: "Embedded",
-    course: "MIEEC",
-    description: "Deadlines, jitter, and practical scheduling strategies for labs.",
-    tags: ["watermarked"],
-    duration: "55 min",
-    views: "95 students",
-    accent: "linear-gradient(135deg, #4f4a82, #8ea0f4)",
-  },
-];
+const demoVideos = [];
 
 const state = {
   token: sessionStorage.getItem("ua_access_token") || "",
   refreshToken: sessionStorage.getItem("ua_refresh_token") || "",
   profile: null,
-  videos: [...demoVideos],
+  videos: [],
   query: "",
   filter: "all",
 };
@@ -102,13 +53,29 @@ function updateHeaderSession() {
   const chip = document.getElementById("session-chip");
   const authLink = document.getElementById("auth-link");
   const uploadLink = document.getElementById("nav-upload");
+  const studioLink = document.getElementById("nav-studio");
+  const searchForm = document.getElementById("nav-search-form");
+  const registerLink = document.getElementById("nav-register-link");
+  
   if (!chip || !authLink) {
     return;
   }
+  
+  if (state.token) {
+    if (searchForm) searchForm.classList.remove("hidden");
+    if (registerLink) registerLink.classList.add("hidden");
+  } else {
+    if (searchForm) searchForm.classList.add("hidden");
+    if (registerLink) registerLink.classList.remove("hidden");
+  }
+  
   if (state.profile) {
     chip.textContent = `${state.profile.name} · ${state.profile.role}`;
     if (uploadLink) {
       uploadLink.classList.toggle("hidden", state.profile.role !== "professor");
+    }
+    if (studioLink) {
+      studioLink.classList.toggle("hidden", state.profile.role !== "professor");
     }
     authLink.textContent = "Sign Out";
     authLink.href = "#";
@@ -125,6 +92,9 @@ function updateHeaderSession() {
     if (uploadLink) {
       uploadLink.classList.add("hidden");
     }
+    if (studioLink) {
+      studioLink.classList.add("hidden");
+    }
     authLink.textContent = "Sign Out";
     authLink.href = "#";
     authLink.onclick = (event) => {
@@ -139,6 +109,9 @@ function updateHeaderSession() {
     chip.textContent = "Guest";
     if (uploadLink) {
       uploadLink.classList.add("hidden");
+    }
+    if (studioLink) {
+      studioLink.classList.add("hidden");
     }
     authLink.textContent = "Sign In";
     authLink.href = "/auth/login";
@@ -191,6 +164,7 @@ function mapApiVideos(results = []) {
     tags: [...(video.tags || []), "recent"],
     duration: "Lecture",
     views: "Scoped access",
+    thumbnail_url: video.thumbnail_url,
     accent: idx % 2
       ? "linear-gradient(135deg, #2a7b77, #7bc6be)"
       : "linear-gradient(135deg, #d6603b, #ebb18f)",
@@ -210,7 +184,7 @@ function filteredVideos() {
 
 async function loadVideos() {
   if (!state.token) {
-    state.videos = [...demoVideos];
+    state.videos = [];
     return;
   }
   const qs = new URLSearchParams();
@@ -222,9 +196,9 @@ async function loadVideos() {
       headers: { Authorization: `Bearer ${state.token}` },
     });
     const mapped = mapApiVideos(data.results || []);
-    state.videos = mapped.length ? mapped : [...demoVideos];
+    state.videos = mapped.length ? mapped : [];
   } catch {
-    state.videos = [...demoVideos];
+    state.videos = [];
     notify("Live catalog unavailable. Showing demo feed.", "warn");
   }
 }
@@ -238,7 +212,7 @@ function renderVideoCards(targetId) {
   host.innerHTML = videos
     .map((video) => `
       <article class="video-card card">
-        <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.accent};">
+        <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
           <span class="badge">${escapeHtml(video.subject)}</span>
           <span class="duration">${escapeHtml(video.duration)}</span>
         </a>
@@ -261,14 +235,41 @@ function renderVideoCards(targetId) {
 }
 
 function setupSearch() {
-  const form = document.getElementById("search-form");
-  const input = document.getElementById("search-input");
+  const form = document.getElementById("nav-search-form");
+  const input = document.getElementById("nav-search-input");
+  
   if (!form || !input) {
     return;
   }
+  
+  // Fill the input if we came from a query param
+  const urlParams = new URLSearchParams(window.location.search);
+  const q = urlParams.get("q");
+  if (q && page === "library") {
+    input.value = q;
+    state.query = q;
+    // We already call loadVideos in bootHomeOrLibrary
+  }
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    state.query = input.value.trim();
+    const query = input.value.trim();
+    if (page !== "library") {
+      window.location.href = `/library?q=${encodeURIComponent(query)}`;
+      return;
+    }
+    
+    // If we're already on the library page, just search in place
+    state.query = query;
+    // Update the URL to reflect the search without reloading
+    const newUrl = new URL(window.location);
+    if (query) {
+      newUrl.searchParams.set("q", query);
+    } else {
+      newUrl.searchParams.delete("q");
+    }
+    window.history.pushState({}, "", newUrl);
+    
     await loadVideos();
     renderVideoCards("video-grid");
   });
@@ -294,29 +295,91 @@ function setupFilters() {
 async function setupWatchPage() {
   await loadVideos();
   const pool = filteredVideos();
-  const current = pool.find((v) => v.id === selectedVideoId) || pool[0] || demoVideos[0];
-
+  
   const frame = document.getElementById("player-frame");
   const title = document.getElementById("watch-title");
   const meta = document.getElementById("watch-meta");
   const title2 = document.getElementById("watch-title-secondary");
   const description = document.getElementById("watch-description");
-  if (frame && title && meta && title2 && description && current) {
-    frame.style.background = current.accent;
-    title.textContent = current.title;
-    meta.textContent = `${current.professor} · ${current.subject} · ${current.course}`;
-    title2.textContent = current.title;
-    description.textContent = current.description;
+  const videoEl = document.getElementById("watch-video");
+  const overlay = document.getElementById("player-overlay");
+
+  const activeId = selectedVideoId || (pool[0] && pool[0].id);
+
+  if (activeId && state.token) {
+    try {
+      const videoData = await requestJson(`/videos/${encodeURIComponent(activeId)}`, {
+        headers: { Authorization: `Bearer ${state.token}` },
+      });
+      
+      console.log("Fetched Video Data:", videoData);
+
+      if (title) title.textContent = videoData.title || "Unknown Title";
+      if (title2) title2.textContent = videoData.title || "Unknown Title";
+      if (description) description.textContent = videoData.description || "No description.";
+      if (meta) meta.textContent = `${videoData.uploader_id || 'Professor'} · ${videoData.subject || 'Subject'} · ${videoData.course || 'Course'}`;
+      
+      if (videoEl && videoData.stream_url) {
+        videoEl.src = videoData.stream_url;
+        videoEl.style.display = "block";
+        if (overlay) overlay.style.display = "none";
+        if (frame) frame.style.background = "black";
+      } else if (videoEl) {
+         // Show it anyway so at least the player is there
+         videoEl.style.display = "block";
+         if (overlay) overlay.style.display = "none";
+      }
+    } catch (err) {
+      console.error("Failed to fetch stream URL:", err);
+      // Force display video so the user knows it's an empty player at least
+      if (videoEl) {
+        videoEl.style.display = "block";
+      }
+      if (overlay) {
+        overlay.style.display = "none";
+      }
+      if (title) title.textContent = "Error Loading Video";
+      if (description) description.textContent = err.message;
+    }
+  } else {
+    // If we reach here, we are missing state.token or activeId!
+    console.error("Missing activeId or state.token", { activeId, token: state.token });
+    if (overlay) overlay.style.display = "none";
+    if (title) title.textContent = "Authentication Required";
+    if (description) description.textContent = "Please sign in to watch videos.";
   }
 
   const recHost = document.getElementById("recommendations");
   if (recHost) {
-    recHost.innerHTML = pool
-      .filter((v) => v.id !== current.id)
+    let recs = pool.filter((v) => v.id !== activeId);
+    
+    // Sort randomly
+    recs.sort(() => 0.5 - Math.random());
+    
+    // Fill up to 6 videos with dummy data if we don't have enough real videos
+    // if (recs.length < 6) {
+    //   const dummyTitles = ["Advanced Mathematics", "Physics 101", "Introduction to Biology", "Computer Science Principles", "Modern History", "Philosophy of Science"];
+    //   const dummyProfs = ["Dr. Smith", "Prof. Johnson", "Dr. Williams", "Prof. Brown", "Dr. Davis", "Prof. Miller"];
+    //   const colors = ["#d7623d", "#efb08c", "#4CAF50", "#2196F3", "#9C27B0", "#FF9800", "#e91e63", "#00bcd4"];
+    //   
+    //   const needed = 6 - recs.length;
+    //   for (let i = 0; i < needed; i++) {
+    //     const rIndex = Math.floor(Math.random() * dummyTitles.length);
+    //     recs.push({
+    //       id: "dummy-" + Date.now() + "-" + i,
+    //       title: dummyTitles[rIndex],
+    //       professor: dummyProfs[rIndex],
+    //       course: "General Studies",
+    //       accent: colors[Math.floor(Math.random() * colors.length)]
+    //     });
+    //   }
+    // }
+
+    recHost.innerHTML = recs
       .slice(0, 8)
       .map((video) => `
         <a class="recommend-item" href="/watch/${encodeURIComponent(video.id)}">
-          <span class="rec-thumb" style="background:${video.accent};"></span>
+          <span class="rec-thumb" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);"></span>
           <span>
             <strong>${escapeHtml(video.title)}</strong>
             <small>${escapeHtml(video.professor)} · ${escapeHtml(video.course)}</small>
@@ -333,8 +396,14 @@ function setupAuthTabs() {
       const target = tab.dataset.authTab;
       document.querySelectorAll("[data-auth-tab]").forEach((node) => node.classList.toggle("active", node === tab));
       document.querySelectorAll("[data-auth-panel]").forEach((panel) => panel.classList.toggle("hidden", panel.dataset.authPanel !== target));
+      window.location.hash = target;
     });
   });
+
+  if (window.location.hash === "#register") {
+    const registerTab = document.querySelector('[data-auth-tab="register"]');
+    if (registerTab) registerTab.click();
+  }
 }
 
 function setupAuthForms() {
@@ -380,9 +449,19 @@ function setupAuthForms() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (status) {
-          status.textContent = "Account created. You can now log in.";
-        }
+        
+        // Hide form and status
+        registerForm.classList.add("hidden");
+        if (status) status.classList.add("hidden");
+        
+        // Change title
+        const authTitle = document.getElementById("auth-title");
+        if (authTitle) authTitle.textContent = "Registration Complete";
+        
+        // Show success div
+        const successBlock = document.getElementById("register-success");
+        if (successBlock) successBlock.classList.remove("hidden");
+        
         notify("Account created successfully.", "success");
       } catch (error) {
         if (status) {
@@ -420,8 +499,8 @@ function updateUploadGate() {
     return;
   }
 
-  gate.className = "gate-message success";
-  gate.textContent = `Upload unlocked for ${state.profile.name} (${state.profile.role}).`;
+  gate.className = "hidden";
+  gate.textContent = "";
   form.querySelectorAll("input, textarea, select, button").forEach((el) => {
     el.disabled = false;
   });
@@ -446,9 +525,12 @@ function parseSseEvents(text) {
 
 function setupUploadForm() {
   const form = document.getElementById("upload-form");
-  if (!form) {
-    return;
-  }
+  if (!form) return;
+
+  const uploadStatus = document.getElementById("upload-status");
+  const statusText = document.getElementById("status-text");
+  const progressFill = document.getElementById("progress-fill");
+  const submitBtn = document.getElementById("upload-submit");
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -479,52 +561,146 @@ function setupUploadForm() {
 
     const endpoint = mode === "process" ? "/videos/process" : "/videos";
 
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${state.token}` },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body || "Upload failed");
+    if (uploadStatus) {
+      uploadStatus.classList.remove("hidden");
+      // reset colors
+      if (progressFill) {
+          progressFill.style.background = "#0066cc";
+          progressFill.style.width = "0%";
       }
+    }
+    
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Uploading...";
+    }
 
-      if (mode === "process") {
+    try {
+      if (mode !== "process") {
+        // --- XHR strictly to get actual upload percentage ---
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", endpoint, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${state.token}`);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 100);
+            if (progressFill) progressFill.style.width = `${percent}%`;
+            if (statusText) statusText.textContent = `Uploading: ${percent}%`;
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const payload = JSON.parse(xhr.responseText);
+            if (statusText) statusText.textContent = "Upload complete!";
+            if (progressFill) progressFill.style.width = "100%";
+            notify("Video uploaded successfully!", "success");
+            window.setTimeout(() => window.location.href = `/watch/${payload.video_id}`, 1000);
+          } else {
+             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Publish Lecture"; }
+             if (statusText) statusText.textContent = `Error: ${xhr.status} ${xhr.statusText}`;
+             if (progressFill) progressFill.style.background = "#d32f2f";
+             notify("Upload failed: " + xhr.responseText, "error");
+          }
+        };
+
+        xhr.onerror = () => {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Publish Lecture"; }
+          if (progressFill) progressFill.style.background = "#d32f2f";
+          if (statusText) statusText.textContent = "Upload failed - Network error";
+          notify("Network Error during upload", "error");
+        };
+
+        xhr.send(formData);
+
+      } else {
+        // --- Fetch is required to sequentially stream Server-Sent Events after upload ---
+        // For 'process' mode, we upload then immediately tail the EventStream for watermarking %
+        if (statusText) statusText.textContent = "Uploading (waiting for engine)...";
+        if (progressFill) progressFill.style.width = "25%";
+        
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${state.token}` },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Publish Lecture"; }
+          const body = await response.text();
+          throw new Error(body || "Upload failed");
+        }
+
+        if (statusText) statusText.textContent = "Processing video...";
+        
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        let complete = "";
+        let buffer = "";
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-          complete += decoder.decode(value, { stream: true });
-        }
-        const events = parseSseEvents(complete);
-        const done = events.find((e) => e.status === "done");
-        if (done) {
-          notify(`Lecture processed. Video id: ${done.video_id || done.job_id}`, "success");
-        } else {
-          notify("Processing started. Check notifications later.", "info");
-        }
-      } else {
-        const payload = await response.json();
-        notify(`Video uploaded: ${payload.video_id}`, "success");
-      }
+          if (done) break;
 
-      form.reset();
-    } catch (error) {
-      notify(`Upload failed: ${error.message}`, "error");
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const line = part.split("\n").find(l => l.startsWith("data:"));
+            if (!line) continue;
+            try {
+              const eventData = JSON.parse(line.slice(5).trim());
+              if (eventData.percent !== undefined) {
+                if (progressFill) progressFill.style.width = `${eventData.percent}%`;
+                let msg = `Processing: ${eventData.percent}%`;
+                if (eventData.message) {
+                  msg += ` - ${eventData.message}`;
+                }
+                if (statusText) statusText.textContent = msg;
+              }
+              if (eventData.status === "done") {
+                if (statusText) statusText.textContent = "Processing complete!";
+                notify("Video processed and ready.", "success");
+                window.setTimeout(() => {
+                   window.location.href = `/watch/${eventData.video_id}`;
+                }, 1500);
+              } else if (eventData.status === "failed") {
+                throw new Error(eventData.error || "Processing failed");
+              }
+            } catch (e) {
+              console.error("SSE Parse Error", e);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      if (statusText) statusText.textContent = `Error: ${err.message}`;
+      if (progressFill) progressFill.style.background = "#d32f2f";
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Publish Lecture";
+      }
+      notify(err.message, "error");
     }
   });
 }
 
 async function bootHomeOrLibrary() {
+  if (!state.token) {
+    const grid = document.getElementById("video-grid");
+    if (grid) grid.innerHTML = "";
+    
+    // Also remove the "Trending Lectures" section on home page if not logged in
+    if (page === "home") {
+        const trendingTitle = document.querySelector(".section-head");
+        if (trendingTitle) trendingTitle.style.display = "none";
+    }
+    return;
+  }
   await loadVideos();
   renderVideoCards("video-grid");
-  setupSearch();
   setupFilters();
 }
 
@@ -538,6 +714,13 @@ async function boot() {
   updateHeaderSession();
   await loadProfile();
   updateHeaderSession();
+  setupSearch();
+
+  // Enforce authentication for protected pages
+  if (["library", "watch", "upload", "studio"].includes(page) && !state.token) {
+    window.location.href = "/auth/login";
+    return;
+  }
 
   if (page === "home" || page === "library") {
     await bootHomeOrLibrary();
@@ -548,7 +731,136 @@ async function boot() {
     setupAuthForms();
   } else if (page === "upload") {
     await bootUpload();
+  } else if (page === "studio") {
+    setupStudioForm();
+    await bootStudio();
   }
 }
 
 boot();
+
+async function bootStudio() {
+  await loadProfile();
+  
+  const gate = document.getElementById("studio-gate");
+  const content = document.getElementById("studio-content");
+  
+  if (!state.profile || state.profile.role !== "professor") {
+    gate.classList.remove("hidden");
+    content.classList.add("hidden");
+    return;
+  }
+  
+  gate.classList.add("hidden");
+  content.classList.remove("hidden");
+  
+  await loadStudioVideos();
+}
+
+async function loadStudioVideos() {
+  const tbody = document.getElementById("studio-video-list");
+  if (!tbody) return;
+  
+  try {
+    const res = await requestJson("/videos/me", {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    const videos = res.results || [];
+    
+    if (videos.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="padding: 24px; text-align: center;">No videos found.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = videos.map(v => `
+      <tr>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          <strong>${escapeHtml(v.title)}</strong><br>
+          <small class="muted">${escapeHtml(v.description || 'No description')}</small>
+        </td>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          ${escapeHtml(v.course || '—')}<br>
+          <small class="muted">${escapeHtml(v.subject || '—')}</small>
+        </td>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          <span class="tag ${v.status === 'ready' ? '' : 'warn'}">${escapeHtml(v.status)}</span>
+        </td>
+        <td style="padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: right;">
+          <button class="button small ghost" onclick="openEditModal('${v.video_id}', '${escapeHtml(v.title.replace(/'/g, "\\'"))}', '${escapeHtml((v.description || '').replace(/'/g, "\\'"))}', '${escapeHtml((v.course || '').replace(/'/g, "\\'"))}', '${escapeHtml((v.subject || '').replace(/'/g, "\\'"))}', '${escapeHtml((v.tags || []).join(", ").replace(/'/g, "\\'"))}')">Edit</button>
+          <button class="button small error" onclick="deleteStudioVideo('${v.video_id}')">Delete</button>
+        </td>
+      </tr>
+    `).join("");
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = `<tr><td colspan="4" style="padding: 24px; text-align: center; color: var(--error);">Error loading videos: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function deleteStudioVideo(id) {
+  if (!confirm("Are you sure you want to delete this video?")) return;
+  
+  try {
+    await requestJson(`/videos/${id}`, { 
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${state.token}` }
+    });
+    notify("Video deleted", "success");
+    await loadStudioVideos();
+  } catch (err) {
+    notify(err.message, "error");
+  }
+}
+
+function openEditModal(id, title, desc, course, subj, tags) {
+  document.getElementById("edit-video-id").value = id;
+  document.getElementById("edit-title").value = title;
+  document.getElementById("edit-description").value = desc;
+  document.getElementById("edit-course").value = course;
+  document.getElementById("edit-subject").value = subj;
+  document.getElementById("edit-tags").value = tags;
+  
+  document.getElementById("edit-modal").style.display = "flex";
+}
+
+function closeEditModal() {
+  document.getElementById("edit-modal").style.display = "none";
+}
+
+function setupStudioForm() {
+  const form = document.getElementById("edit-form");
+  if (!form) return;
+  
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const id = document.getElementById("edit-video-id").value;
+    const updateBtn = form.querySelector('button[type="submit"]');
+    updateBtn.disabled = true;
+    updateBtn.textContent = "Saving...";
+    
+    try {
+      await requestJson(`/videos/${id}`, {
+        method: "PUT",
+        headers: { 
+          "Authorization": `Bearer ${state.token}`,
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          title: document.getElementById("edit-title").value,
+          description: document.getElementById("edit-description").value,
+          course: document.getElementById("edit-course").value,
+          subject: document.getElementById("edit-subject").value,
+          tags: document.getElementById("edit-tags").value
+        })
+      });
+      notify("Changes saved successfully", "success");
+      closeEditModal();
+      await loadStudioVideos();
+    } catch (err) {
+      notify(err.message, "error");
+    } finally {
+      updateBtn.disabled = false;
+      updateBtn.textContent = "Save Changes";
+    }
+  });
+}

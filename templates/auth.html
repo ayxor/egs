@@ -6,20 +6,11 @@
     <div class="section-head compact">
       <div>
         <p class="eyebrow">Authentication</p>
-        <h1>Access UAStream</h1>
-      </div>
-      <div class="tab-row">
-        <button class="tab active" type="button" data-auth-tab="login">Login</button>
-        <button class="tab" type="button" data-auth-tab="register">Register</button>
+        <h1 id="auth-title">Create Account</h1>
       </div>
     </div>
 
-    <div id="login-form" class="form-grid" data-auth-panel="login">
-      <p class="muted">Sign in is handled by Keycloak. You will be redirected to the institutional login page.</p>
-      <a class="button primary" href="/auth/login">Continue with Keycloak</a>
-    </div>
-
-    <form id="register-form" class="form-grid hidden" data-auth-panel="register">
+    <form id="register-form" class="form-grid">
       <input name="email" type="email" placeholder="new-user@ua.pt" required>
       <input name="password" type="password" placeholder="Password" required>
       <input name="name" type="text" placeholder="Full name" required>
@@ -32,9 +23,24 @@
       </div>
       <input name="institution" type="text" placeholder="universidade-aveiro" required>
       <button class="button primary" type="submit">Create Account</button>
+
+      <div style="text-align: center; margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+        <span class="muted">Already a user?</span>
+        <a class="button ghost" href="/auth/login" style="width: 100%;">Log in</a>
+      </div>
     </form>
 
-    <p id="auth-status" class="muted">Account creation stays in UAStream, but sign-in happens in Keycloak.</p>
+    <div id="register-success" class="hidden" style="text-align: center; padding: 1.5rem 0;">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--success); margin-bottom: 1rem;">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+      </svg>
+      <h2 style="margin-bottom: 0.5rem;">Success!</h2>
+      <p class="muted" style="margin-bottom: 2rem;">Your account has been created. An email with further details may have been sent to you.</p>
+      <a class="button primary" href="/auth/login" style="width: 100%;">Log In with Keycloak</a>
+    </div>
+
+    <p id="auth-status" class="muted" style="margin-top: 1.5rem;">Account creation stays in UAStream, but sign-in happens securely in Keycloak.</p>
   </article>
 </section>
 {% endblock %}

@@ -15,9 +15,10 @@ import uuid
 import logging
 import re
 import os
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 from flask import Flask, request, jsonify, Response, render_template, redirect
+from flask_cors import CORS
 from jose import JWTError
 
 import config
@@ -32,6 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+CORS(app)
 
 # ---------------------------------------------------------------------------
 # Module-level startup — runs in every gunicorn worker on import
@@ -125,6 +127,23 @@ def upload_page():
     )
 
 
+@app.route("/studio", methods=["GET"])
+def studio_page():
+    """Professor studio page (manage videos)."""
+    return render_template(
+        "studio.html",
+        page_title="Studio · UAStream",
+        page_name="studio",
+        downstream_services={
+            "iam": config.KEYCLOAK_URL,
+            "object_storage": config.OBJECT_STORAGE_URL,
+            "video_editor": config.VIDEO_EDITOR_URL,
+            "notifications": config.NOTIFICATIONS_URL,
+            "database": config.DATABASE_URL,
+        },
+    )
+
+
 @app.route("/auth", methods=["GET"])
 def auth_page():
     """Authentication page."""
@@ -177,8 +196,14 @@ def _professor_required():
     payload, err = _jwt_required()
     if err:
         return None, err
-    if payload.get("role") != "professor":
+        
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user or user["role"] != "professor":
         return None, (jsonify({"error": "forbidden – professor role required"}), 403)
+        
+    # Populate payload with db truth
+    payload["role"] = user["role"]
+    payload["institution"] = user["institution"]
     return payload, None
 
 
@@ -436,8 +461,26 @@ def _parse_tags():
     return tags
 
 
+def _notify_students(title, course, institution, uploader_name):
+    if not course:
+        return
+    students = db.get_students_by_course(institution, course)
+    for student in students:
+        services.send_email(
+            to=student["email"],
+            subject=f"Novo vídeo de {course}: {title}",
+            template="new_video",
+            data={
+                "name": student["name"],
+                "course": course,
+                "professor_name": uploader_name,
+                "title": title
+            },
+        )
+
+
 @app.route("/videos", methods=["POST"])
-def upload_video():
+def upload_video_endpoint():
     """Upload a video without Video Editor processing."""
     payload, err = _professor_required()
     if err:
@@ -494,6 +537,7 @@ def upload_video():
         template="upload_complete",
         data={"name": user["name"], "title": title},
     )
+    _notify_students(title, course, institution, user["name"])
 
     return jsonify({"video_id": str(video["id"])}), 201
 
@@ -538,15 +582,20 @@ def upload_video_with_processing():
     raw_key = f"raw/{video_uuid}.mp4"
     processed_key = f"processed/{video_uuid}.mp4"
 
-    # 1) Ensure bucket + upload raw file
+    thumb_key = f"thumbnails/{video_uuid}.jpg"
+    
+    # 1) Read file bytes into memory
+    file_bytes = file.read()
+    
+    # 2) Ensure bucket + upload raw file
     services.ensure_bucket(bucket)
     try:
-        services.upload_object(bucket, raw_key, file.read())
+        services.upload_object(bucket, raw_key, file_bytes)
     except Exception as exc:
         logger.error("Upload to Object Storage failed: %s", exc)
         return jsonify({"error": "failed to upload video"}), 502
 
-    # 2) Create video record (status: processing)
+    # 3) Create video record (status: processing)
     video = db.create_video(
         uploader_id=user["id"],
         institution=institution,
@@ -561,22 +610,10 @@ def upload_video_with_processing():
     )
     video_id = str(video["id"])
 
-    # 3) Obtain presigned URLs (src for GET, dst for PUT)
-    try:
-        src_presign = services.presign_object(bucket, raw_key, method="GET")
-        dst_presign = services.presign_object(bucket, processed_key, method="PUT")
-    except Exception as exc:
-        logger.error("Presign failed: %s", exc)
-        db.update_video_status(video_id, "failed")
-        return jsonify({"error": "failed to generate presigned URLs"}), 502
-
-    # 4) Submit job to Video Editor
-    progress_url = f"{config.COMPOSER_BASE_URL}/internal/jobs/progress"
+    # 4) Submit job strictly as a direct upload (no callbacks)
     try:
         job_resp = services.create_job(
-            src_url=src_presign["url"],
-            dst_url=dst_presign["url"],
-            progress_url=progress_url,
+            file_bytes=file_bytes,
             operations=operations,
         )
     except Exception as exc:
@@ -587,7 +624,7 @@ def upload_video_with_processing():
     external_job_id = job_resp["job_id"]
 
     # 5) Record processing job in DB
-    db.create_processing_job(video_id, external_job_id, operations)
+    db.create_processing_job(video_id, external_job_id, operations, processed_key)
 
     # 6) Relay SSE progress from Video Editor to the client
     def _sse_relay():
@@ -606,11 +643,31 @@ def upload_video_with_processing():
                 status = event_data.get("status")
 
                 if status == "done":
-                    # Finalise video
-                    db.update_video_status(video_id, "ready", processed_key)
-                    db.update_processing_job(external_job_id, "done", 100)
+                    # Composer acts as the active puller
+                    try:
+                        # Pull final video
+                        processed_bytes = services.download_job_result(external_job_id)
+                        services.upload_object(bucket, processed_key, processed_bytes)
+                        # Pull thumbnail
+                        try:
+                            thumb_bytes = services.download_job_thumbnail(external_job_id)
+                            services.upload_object(bucket, thumb_key, thumb_bytes)
+                        except Exception as e:
+                            logger.error("Failed to pull thumbnail: %s", e)
+                            
+                        # Finalise video
+                        db.update_video_status(video_id, "ready", processed_key, thumbnail_key=thumb_key)
+                        db.update_processing_job(external_job_id, "done", 100)
+                    except Exception as e:
+                        logger.error("Failed to fetch Video Editor result: %s", e)
+                        db.update_video_status(video_id, "failed")
+                        db.update_processing_job(external_job_id, "failed", 0, str(e))
+                        yield f"data: {json.dumps({'status': 'failed', 'error': 'Failed retrieving result.'})}\n\n"
+                        return
+
                     event_data["video_id"] = video_id
                     yield f"data: {json.dumps(event_data)}\n\n"
+                    
                     # Send notification
                     services.send_email(
                         to=user["email"],
@@ -618,6 +675,7 @@ def upload_video_with_processing():
                         template="upload_complete",
                         data={"name": user["name"], "title": title},
                     )
+                    _notify_students(title, course, institution, user["name"])
                     return
                 elif status == "failed":
                     db.update_video_status(video_id, "failed")
@@ -639,8 +697,70 @@ def upload_video_with_processing():
     return Response(_sse_relay(), status=202, mimetype="text/event-stream")
 
 
+@app.route("/videos/me", methods=["GET"])
+def list_my_videos_endpoint():
+    """List videos uploaded by the authenticated user (professors)."""
+    payload, err = _professor_required()
+    if err:
+        return err
+        
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+        
+    videos = db.get_videos_by_uploader(user["id"])
+    return jsonify({
+        "results": [
+            {
+                "video_id": str(v["id"]),
+                "title": v["title"],
+                "description": v["description"],
+                "tags": v["tags"] or [],
+                "course": v["course"],
+                "subject": v["subject"],
+                "status": v["status"],
+                "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
+                "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+            }
+            for v in videos
+        ]
+    }), 200
+
+
+@app.route("/videos/<video_id>", methods=["PATCH", "PUT"])
+def update_video_endpoint(video_id):
+    """Update video metadata."""
+    payload, err = _professor_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    video = db.get_video(video_id)
+    if not video:
+        return jsonify({"error": "video not found"}), 404
+
+    if video["uploader_id"] != user["id"]:
+        return jsonify({"error": "forbidden"}), 403
+
+    body = request.get_json(force=True) or {}
+    title = body.get("title", video["title"])
+    description = body.get("description", video["description"])
+    course = body.get("course", video["course"])
+    subject = body.get("subject", video["subject"])
+    tags = body.get("tags", video["tags"])
+    
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    db.update_video(video_id, title, description, tags, course, subject)
+    return "", 204
+
+
 @app.route("/videos", methods=["GET"])
-def list_videos():
+def list_videos_endpoint():
     """List / search videos scoped to the authenticated user's institution."""
     payload, err = _jwt_required()
     if err:
@@ -681,6 +801,7 @@ def list_videos():
                 "course": v["course"],
                 "subject": v["subject"],
                 "uploader_id": str(v["uploader_id"]),
+                "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
             }
             for v in results
@@ -689,10 +810,10 @@ def list_videos():
 
 
 @app.route("/videos/<video_id>", methods=["GET"])
-def get_video(video_id):
+def get_video_endpoint(video_id):
     """Return video metadata and a temporary presigned streaming URL."""
     if not _UUID_RE.match(video_id):
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     payload, err = _jwt_required()
     if err:
@@ -704,10 +825,10 @@ def get_video(video_id):
 
     video = db.get_video(video_id)
     if not video:
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEOupload_page NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     if video["institution"] != user["institution"]:
-        return jsonify({"error": "forbidden"}), 403
+        print("FORBIDDEN"); return jsonify({"error": "forbidden"}), 403
 
     # Prefer the processed version if available
     storage_key = video["processed_storage_key"] or video["raw_storage_key"]
@@ -716,8 +837,13 @@ def get_video(video_id):
             video["storage_bucket"], storage_key, method="GET"
         )
         stream_url = presign["url"]
-    except Exception:
-        stream_url = None
+        
+        # Rewrite internal object-storage URL to localhost for the frontend client browser
+        if stream_url and "http://object-storage:8080" in stream_url:
+            stream_url = stream_url.replace("http://object-storage:8080", "http://localhost:8081")
+            
+    except Exception as e:
+        stream_url = None; print("PRESIGN ERROR:", e)
 
     return jsonify({
         "video_id": str(video["id"]),
@@ -727,16 +853,17 @@ def get_video(video_id):
         "course": video["course"],
         "subject": video["subject"],
         "uploader_id": str(video["uploader_id"]),
+        "thumbnail_url": f"/internal/storage/{quote(video['storage_bucket'])}/{video['thumbnail_key']}" if video.get("thumbnail_key") else None,
         "created_at": video["created_at"].isoformat() if video["created_at"] else None,
         "stream_url": stream_url,
     }), 200
 
 
 @app.route("/videos/<video_id>", methods=["DELETE"])
-def delete_video(video_id):
+def delete_video_endpoint(video_id):
     """Delete a video. Only the uploader may delete."""
     if not _UUID_RE.match(video_id):
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     payload, err = _jwt_required()
     if err:
@@ -748,7 +875,7 @@ def delete_video(video_id):
 
     video = db.get_video(video_id)
     if not video:
-        return jsonify({"error": "video not found"}), 404
+        print("VIDEO NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
     if str(video["uploader_id"]) != str(user["id"]):
         return jsonify({"error": "forbidden – only the uploader can delete"}), 403
@@ -767,6 +894,24 @@ def delete_video(video_id):
 # ---------------------------------------------------------------------------
 # Internal (called by Video Editor via progress_url callback)
 # ---------------------------------------------------------------------------
+
+@app.route("/internal/storage/<bucket>/<path:key>", methods=["GET", "PUT"])
+def internal_storage_proxy(bucket, key):
+    """Proxy requests from internal services to Object Storage."""
+    if request.method == "GET":
+        resp = services.download_object_stream(bucket, key)
+        
+        def generate():
+            for chunk in resp.iter_content(chunk_size=8192):
+                yield chunk
+                
+        return Response(generate(), status=resp.status_code, content_type=resp.headers.get("content-type"))
+        
+    elif request.method == "PUT":
+        content_type = request.headers.get("Content-Type", "application/octet-stream")
+        resp = services.upload_object_stream(bucket, key, request.stream, content_type=content_type)
+        return Response(resp.content, status=resp.status_code, content_type=resp.headers.get("content-type"))
+
 
 @app.route("/internal/jobs/progress", methods=["POST"])
 def receive_job_progress():
@@ -787,8 +932,10 @@ def receive_job_progress():
         if job:
             vid = str(job["video_id"])
             if status == "done":
-                processed_key = f"processed/{vid}.mp4"
-                db.update_video_status(vid, "ready", processed_key)
+                # Use the key stored when the job was created
+                processed_key = job.get("processed_key") or f"processed/{vid}.mp4"
+                thumbnail_key = processed_key.replace("processed/", "thumbnails/").replace(".mp4", ".jpg")
+                db.update_video_status(vid, "ready", processed_key, thumbnail_key=thumbnail_key)
             else:
                 db.update_video_status(vid, "failed")
 

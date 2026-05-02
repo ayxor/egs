@@ -89,6 +89,14 @@ def get_user_by_email(email):
             )
             return cur.fetchone()
 
+def get_students_by_course(institution, course):
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM users WHERE institution = %s AND course = %s AND role = 'student' AND is_active = TRUE",
+                (institution, course),
+            )
+            return cur.fetchall()
 
 # ---------------------------------------------------------------------------
 # Videos
@@ -121,6 +129,34 @@ def get_video(video_id):
                 (video_id,),
             )
             return cur.fetchone()
+
+
+def get_videos_by_uploader(uploader_id):
+    with _get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at
+                FROM videos
+                WHERE uploader_id = %s AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                """,
+                (uploader_id,),
+            )
+            return cur.fetchall()
+
+
+def update_video(video_id, title, description, tags, course, subject):
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE videos
+                SET title = %s, description = %s, tags = %s, course = %s, subject = %s, updated_at = NOW()
+                WHERE id = %s
+                """,
+                (title, description, tags, course, subject, video_id),
+            )
 
 
 def search_videos(institution, q=None, course=None, subject=None,
@@ -156,7 +192,7 @@ def search_videos(institution, q=None, course=None, subject=None,
             cur.execute(
                 f"""
                 SELECT id, title, description, tags, course, subject,
-                       uploader_id, created_at
+                       uploader_id, status, storage_bucket, thumbnail_key, created_at
                 FROM videos
                 WHERE {where}
                 ORDER BY created_at DESC
@@ -178,10 +214,19 @@ def delete_video(video_id):
             )
 
 
-def update_video_status(video_id, status, processed_storage_key=None):
+def update_video_status(video_id, status, processed_storage_key=None, thumbnail_key=None):
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            if processed_storage_key:
+            if processed_storage_key and thumbnail_key:
+                cur.execute(
+                    """
+                    UPDATE videos
+                    SET status = %s, processed_storage_key = %s, thumbnail_key = %s, updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (status, processed_storage_key, thumbnail_key, video_id),
+                )
+            elif processed_storage_key:
                 cur.execute(
                     """
                     UPDATE videos
@@ -201,16 +246,16 @@ def update_video_status(video_id, status, processed_storage_key=None):
 # Processing jobs
 # ---------------------------------------------------------------------------
 
-def create_processing_job(video_id, external_job_id, operations):
+def create_processing_job(video_id, external_job_id, operations, processed_key=None):
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO processing_jobs (video_id, external_job_id, operations)
-                VALUES (%s, %s, %s)
+                INSERT INTO processing_jobs (video_id, external_job_id, operations, processed_key)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id
                 """,
-                (video_id, external_job_id, Json(operations)),
+                (video_id, external_job_id, Json(operations), processed_key),
             )
             return cur.fetchone()
 
