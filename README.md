@@ -1,42 +1,35 @@
 # Composer Service
 
-The Composer is the core application service of UAStream.
+Composer is the application and orchestration service for UAStream. It serves the web UI, handles authentication, owns the main platform API, and coordinates IAM, storage, video processing, and notifications.
 
-It is not a stub and not a passive gateway. It is the runtime entity that orchestrates IAM, video processing, storage, and notifications so the platform works end-to-end for professors and students.
+## Role In The Stack
 
-The same Composer service also serves the web application pages (frontend).
+Composer is the only service that should orchestrate cross-service business flows. It is responsible for turning user actions into the right sequence of calls to Keycloak, Object Storage, Video Editor, and Notifications.
 
-## What The Composer Does
+Public access goes through Traefik on `http://uastream.com`. Composer is exposed there as the main application entrypoint.
 
-- Serves the UAStream web app pages (`/`, `/library`, `/watch/<video_id>`, `/upload`, `/auth`)
-- Authenticates users through Keycloak token flows
-- Validates JWTs for protected API operations
-- Registers users (including role and institution metadata)
-- Enforces role and ownership rules (for example, only professors can upload)
-- Uploads raw videos to Object Storage
-- Triggers processing jobs in Video Editor (including watermark workflows)
-- Tracks processing progress and relays updates
-- Persists user/video/job metadata in PostgreSQL
-- Sends publication and lifecycle notifications through Notifications service
-- Issues presigned stream URLs so clients can watch directly from storage
+## What It Does
 
-## Core Architecture Role
+- Serves the UAStream pages (`/`, `/library`, `/watch/<video_id>`, `/upload`, `/auth`)
+- Handles login and registration flows with Keycloak
+- Creates users through the Keycloak admin API
+- Validates JWTs for protected API routes
+- Enforces ownership and role checks
+- Uploads raw media to Object Storage
+- Creates and monitors Video Editor jobs
+- Persists platform metadata in PostgreSQL
+- Sends email notifications through the Notifications service
+- Generates stream URLs for playback
 
-The Composer is the single orchestrator in this project.
+## Main Endpoints
 
-- Frontend requests arrive at Composer
-- Composer coordinates service calls in the correct order
-- Internal services do not need to call each other directly for platform business logic
+### Frontend
 
-## Frontend Pages
-
-- `GET /` - Home feed
-- `GET /library` - Video library and search
-- `GET /watch/<video_id>` - Watch page
-- `GET /upload` - Upload studio (professor flow)
-- `GET /auth` - Login / registration page
-
-## API Endpoints
+- `GET /`
+- `GET /library`
+- `GET /watch/<video_id>`
+- `GET /upload`
+- `GET /auth`
 
 ### Authentication
 
@@ -50,25 +43,15 @@ The Composer is the single orchestrator in this project.
 
 ### Videos
 
-- `POST /videos` (professor)
-- `POST /videos/process` (professor, watermark/processing flow)
+- `POST /videos`
+- `POST /videos/process`
 - `GET /videos`
 - `GET /videos/{video_id}`
-- `DELETE /videos/{video_id}` (uploader)
+- `DELETE /videos/{video_id}`
 
-### Internal Callback
+### Internal
 
 - `POST /internal/jobs/progress`
-
-## Data Owned By Composer
-
-Composer owns and manages PostgreSQL metadata tables for:
-
-- user profiles
-- videos
-- processing jobs
-
-Passwords and credential verification are delegated to Keycloak.
 
 ## Dependencies
 
@@ -78,7 +61,7 @@ Passwords and credential verification are delegated to Keycloak.
 - Notifications
 - PostgreSQL
 
-All dependency endpoints and credentials are configured through environment variables in `config.py`.
+All URLs and secrets come from environment variables in `config.py`.
 
 ## Local Run
 
@@ -89,13 +72,14 @@ pip install -r requirements.txt
 PORT=8090 python app.py
 ```
 
-Then open:
+Open the app at:
 
 - `http://127.0.0.1:8090/`
 
-## Required Environment Variables
+## Environment Variables
 
 - `KEYCLOAK_URL`
+- `KEYCLOAK_PUBLIC_URL`
 - `KEYCLOAK_REALM`
 - `KEYCLOAK_CLIENT_ID`
 - `KEYCLOAK_CLIENT_SECRET`

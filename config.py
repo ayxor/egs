@@ -1,6 +1,22 @@
 """Composer configuration — all values come from environment variables."""
 
 import os
+import hvac
+
+def get_vault_secret(secret_path, env_fallback, default_val=""):
+    vault_addr = os.environ.get("VAULT_ADDR")
+    vault_token = os.environ.get("VAULT_TOKEN")
+    
+    if vault_addr and vault_token:
+        try:
+            client = hvac.Client(url=vault_addr, token=vault_token)
+            if client.is_authenticated():
+                response = client.secrets.kv.v2.read_secret_version(path=secret_path)
+                return response['data']['data']['api_key']
+        except Exception as e:
+            print(f"Failed to fetch {secret_path} from Vault: {e}")
+            
+    return os.environ.get(env_fallback, default_val)
 
 # Keycloak / IAM
 KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://keycloak:8080")
@@ -11,13 +27,13 @@ KEYCLOAK_CLIENT_SECRET = os.environ.get("KEYCLOAK_CLIENT_SECRET", "")
 
 # Internal services
 OBJECT_STORAGE_URL = os.environ.get("OBJECT_STORAGE_URL", "http://object-storage:8080")
-OBJECT_STORAGE_API_KEY = os.environ.get("OBJECT_STORAGE_API_KEY", "")
+OBJECT_STORAGE_API_KEY = get_vault_secret("object-storage", "OBJECT_STORAGE_API_KEY")
 
 VIDEO_EDITOR_URL = os.environ.get("VIDEO_EDITOR_URL", "http://video-editor:8080")
-VIDEO_EDITOR_API_KEY = os.environ.get("VIDEO_EDITOR_API_KEY", "")
+VIDEO_EDITOR_API_KEY = get_vault_secret("video-editor", "VIDEO_EDITOR_API_KEY")
 
 NOTIFICATIONS_URL = os.environ.get("NOTIFICATIONS_URL", "http://notifications:8080")
-NOTIFICATIONS_API_KEY = os.environ.get("NOTIFICATIONS_API_KEY", "")
+NOTIFICATIONS_API_KEY = get_vault_secret("notifications", "NOTIFICATIONS_API_KEY")
 
 # Self (used to build the progress_url callback for the Video Editor)
 COMPOSER_BASE_URL = os.environ.get("COMPOSER_BASE_URL", "http://composer:8080")
