@@ -1,16 +1,14 @@
 # Video Editor Service
 
-Internal service for asynchronous media processing.
+Video Editor is the media-processing branch. It accepts a source file, applies operations such as watermarking, and writes the result to a destination URL.
 
-The Video Editor receives a source file upload, applies operations, and writes the result to a destination URL.
-The service is business-agnostic and authenticated via API key.
+Composer is the main caller. The service is business-agnostic and authenticated with an API key.
 
 ## API Contract
 
-The official contract is documented in `video-editor.yaml` (OpenAPI 3.0.3).
-This README summarizes the same contract for quick reference.
+The full contract is documented in `video-editor.yaml` (OpenAPI 3.0.3).
 
-Base URL (local): `http://localhost:8080`
+Internal base URL: `http://video-editor:8080`
 
 Required header for all endpoints:
 
@@ -197,3 +195,9 @@ If everything works correctly, the script ends with:
 ```text
 All tests passed.
 ```
+
+## Notes
+
+- This service is run from the `video-editor` branch through the `main` stack compose file.
+- It does not own storage; it only processes bytes and returns results.
+- In the public stack, requests still flow through Traefik at `uastream.com` before reaching the orchestrated services.

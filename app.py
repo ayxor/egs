@@ -14,11 +14,27 @@ import json
 import subprocess
 import re
 import select
+import hvac
+
+def get_vault_secret(secret_path, env_fallback, default_val="stub-api-key"):
+    vault_addr = os.environ.get("VAULT_ADDR")
+    vault_token = os.environ.get("VAULT_TOKEN")
+    
+    if vault_addr and vault_token:
+        try:
+            client = hvac.Client(url=vault_addr, token=vault_token)
+            if client.is_authenticated():
+                response = client.secrets.kv.v2.read_secret_version(path=secret_path)
+                return response['data']['data']['api_key']
+        except Exception as e:
+            print(f"Failed to fetch {secret_path} from Vault: {e}")
+            
+    return os.environ.get(env_fallback, default_val)
 
 app = Flask(__name__)
 CORS(app)
 
-API_KEY = os.environ.get("VIDEO_EDITOR_API_KEY", "stub-api-key")
+API_KEY = get_vault_secret("video-editor", "VIDEO_EDITOR_API_KEY")
 JOB_DIR = "/tmp/video_editor_jobs"
 os.makedirs(JOB_DIR, exist_ok=True)
 
