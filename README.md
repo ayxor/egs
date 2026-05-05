@@ -84,25 +84,18 @@ To guarantee isolation, worker services completely lack awareness of the ecosyst
 
 ## Deployment
 
-To deploy the platform locally, you will need to clone all the service branches side-by-side. Our architecture relies on a mono-repo where each microservice lives in its own branch. 
+To deploy locally, use `run.sh`. It creates or updates git worktrees for each service branch (side-by-side) and then starts the stack with Docker Compose.
 
-### 1. Setup the workspace directory structure
-Create a parent directory to hold all the services together:
+### 1. Clone the main branch
 ```bash
 mkdir uastream-platform && cd uastream-platform
-
 git clone -b main https://github.com/ayxor/egs.git main
-git clone -b composer https://github.com/ayxor/egs.git composer
-git clone -b iam https://github.com/ayxor/egs.git iam
-git clone -b object-storage https://github.com/ayxor/egs.git object-storage
-git clone -b video-editor https://github.com/ayxor/egs.git video-editor
-git clone -b notifications https://github.com/ayxor/egs.git notifications
 ```
 
-### 2. Start the Orchestration
-Once the structure matches, enter the `main` directory and run the global composition:
+### 2. Run the orchestrator bootstrap
 ```bash
 cd main
-docker-compose up --build -d
+./run.sh
 ```
-All services are mapped inside the `docker-compose.yml` to build directly from their sibling local directories.
+
+`run.sh` ensures the service branches (`composer`, `iam`, `object-storage`, `video-editor`, `notifications`) are checked out as sibling directories via git worktrees, keeps them up to date, and then runs Docker Compose. All services are mapped inside [docker-compose.yml](docker-compose.yml) to build directly from those sibling directories.
