@@ -82,6 +82,88 @@ To guarantee isolation, worker services completely lack awareness of the ecosyst
 
 ---
 
+## Secrets Management
+
+### Vault Architecture
+
+This platform uses **HashiCorp Vault** for centralized secrets management. Each service holds configuration (database URLs, API keys, credentials) in Vault, rather than hardcoding them or managing them via environment variables.
+
+#### How Secrets Flow to Services
+
+1. **Vault Server** (`http://vault:8200`) — Stores and serves all secrets to authorized services via HTTP API
+2. **Vault Tokens** — Each service holds a token with restricted permissions; tokens never expire in this demo
+3. **Secrets Retrieval** — Services read secrets from Vault on startup or poll the API as needed
+
+#### Secret Delivery Patterns (Demo & Production)
+
+This project demonstrates **two patterns** for getting secrets into services:
+
+| Pattern | File | Use Case | Status |
+|---|---|---|---|
+| **Static Token (Dev Mode)** | `docker-compose.dev.yml` | Local development with quick iteration; Vault in dev mode (no persistence, all secrets lost on restart) | **Demo** ✅ |
+| **Vault Agent Sidecars (POC)** | `docker-compose.agent.yml` | Demonstration of how professional secret delivery works; Agent containers render secrets to shared volumes | **POC/Educational** ✅ |
+| **Production (External Vault)** | `docker-compose.yml` (standalone) | Real deployments use external Vault cluster with proper auth (AppRole, JWT, etc.); services use client libraries to fetch secrets | **Production Template** 🔒 |
+
+### Development Deployment (Quick Start)
+
+To run locally with **Vault dev mode + static tokens** (all data resets on restart):
+
+```bash
+cd main
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+```
+
+This combines:
+- **`docker-compose.yml`** — Main orchestration (services, databases, Traefik, Vault server)
+- **`docker-compose.dev.yml`** — Dev-only overrides:
+  - `VAULT_SKIP_MLOCK=true` — Disables memory locking (not available in Docker)
+  - `SKIP_SETCAP=true` — Disables Linux capabilities (not available in Docker)
+  - Static hardcoded tokens for each service (e.g., `token-composer`, `token-object-storage`)
+
+⚠️ **This setup is ephemeral** — restarting Vault wipes all secrets. Suitable for development only.
+
+### Vault Agent Sidecar Demo (Educational POC)
+
+To see how production systems deliver secrets securely without hardcoding tokens:
+
+```bash
+cd main
+docker-compose -f docker-compose.yml -f docker-compose.agent.yml up --build -d
+```
+
+**What happens:**
+
+1. Vault runs in dev mode (same as above)
+2. **Agent sidecars** spawn for each service (e.g., `composer-agent`, `video-editor-agent`, `notifications-agent`)
+3. Each Agent:
+   - Authenticates to Vault using a shared token from `vault_init.sh`
+   - Reads secret templates from `vault-agent/templates/` (e.g., `.env` format)
+   - **Renders secrets into shared volumes** (e.g., `composer-secrets:/vault/secrets`)
+4. Services read the rendered secrets from the shared volume instead of fetching them directly from Vault
+
+This pattern demonstrates professional secret management in containerized environments — services never see raw tokens or have direct Vault access.
+
+### Production Deployment (Recommended)
+
+For real deployments, **do not use `.dev` or `.agent`** overrides. Instead:
+
+1. **Run Vault externally** (managed service or HA cluster) — NOT in a container
+2. **Use proper auth methods** — AppRole, Kubernetes auth, JWT, etc. (not static tokens)
+3. **Let services fetch secrets** — Use Vault client libraries (Python `hvac`, Go, etc.) to fetch secrets on-demand
+4. **Remove `VAULT_SKIP_MLOCK`** and `SKIP_SETCAP` — These are dev-only hacks
+
+Example production command:
+```bash
+cd main
+export VAULT_ADDR=https://vault.prod.example.com:8200
+export VAULT_NAMESPACE=uastream
+docker-compose up --build -d
+```
+
+Each service would use its configured auth method to obtain a temporary token and fetch secrets dynamically.
+
+---
+
 ## Deployment
 
 To deploy locally, use `run.sh`. It creates or updates git worktrees for each service branch (side-by-side) and then starts the stack with Docker Compose.
@@ -92,6 +174,7 @@ mkdir uastream-platform && cd uastream-platform
 git clone -b main https://github.com/ayxor/egs.git main
 ```
 
+<<<<<<< HEAD
 ### 2. Run the orchestrator bootstrap
 ```bash
 cd main
@@ -99,3 +182,56 @@ cd main
 ```
 
 `run.sh` ensures the service branches (`composer`, `iam`, `object-storage`, `video-editor`, `notifications`) are checked out as sibling directories via git worktrees, keeps them up to date, and then runs Docker Compose. All services are mapped inside [docker-compose.yml](docker-compose.yml) to build directly from those sibling directories.
+
+### 3. Start the Orchestration (Development)
+Once the structure matches, enter the `main` directory and run the development composition:
+```bash
+cd main
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+```
+
+For the Vault Agent demo:
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.agent.yml up --build -d
+```
+
+All services are mapped inside `docker-compose.yml` to build directly from their sibling local directories.
+
+## Kubernetes Handoff (For Deployers)
+
+This repository currently contains a development-focused Vault POC. The following notes are a concise handoff for the teammate who will deploy this to Kubernetes.
+
+- Purpose: Provide a minimal, actionable checklist so the deployer can move from the dev/demo compose setup to a K8s-ready Vault + app deployment.
+- Scope: This is a handoff for Path B (minimal, ops-handled production work). It does not perform the full hardening here.
+
+### Quick deployer checklist
+
+- Run a production Vault (Helm/managed) instead of the `vault` container in this repo.
+  - Recommended: `hashicorp/vault` Helm chart (enable HA and Raft storage).
+  - Example Helm bits (reference only):
+    ```bash
+    helm repo add hashicorp https://helm.releases.hashicorp.com
+    helm install vault hashicorp/vault --set "server.ha.enabled=true" --set "server.ha.raft.enabled=true" --set "server.dataStorage.enabled=true"
+    ```
+- Use Kubernetes auth for service authentication (enable `auth/kubernetes` in Vault) rather than static tokens or container-mounted secret files.
+- Use the Vault Agent Injector (or Vault CSI) to inject secrets into pods rather than running sidecar agents as root in app containers.
+- Persist Vault storage with PVs or external storage (do not run Vault in dev mode). Ensure backups and snapshot strategy.
+- Remove dev-only flags from any K8s manifests (`VAULT_SKIP_MLOCK`, `SKIP_SETCAP`) and ensure appropriate PodSecurityPolicy / SecurityContext settings.
+- Ensure services run with non-root users and minimal privileges (university security scanners will flag root agents).
+
+### Files of interest for context
+
+- `docker-compose.agent.yml` — demonstrates the sidecar/Agent pattern used in the POC
+- `vault-agent/` — example `agent.hcl` configs and templates used to render secrets
+- `vault_init.sh` — script that seeds Vault and creates AppRole roles (useful for reference; in K8s you will create roles/policies via CI or operator)
+
+### Handoff notes (minimal guidance for the deployer)
+
+- This repo's Vault is intentionally dev-mode for reproducibility. Replace it with a Helm/managed Vault before production use.
+- The deployer should: (1) provision Vault HA+Raft, (2) enable `auth/kubernetes`, (3) create roles/policies for each service, and (4) configure the Vault Injector or CSI driver to populate secrets into pods.
+- If you want, I can later prepare Helm manifests and a minimal K8s example (namespace, ServiceAccount, Role, RoleBinding, and Injector annotation examples) to make the handoff turnkey.
+
+---
+
+*Status: minimal handoff added; full K8s migration documented as a future task.*
+>>>>>>> db9bc77 (chore(docs+vault): add Kubernetes handoff; include Vault POC files)

@@ -1,0 +1,17 @@
+services:
+  vault:
+    environment:
+      VAULT_SKIP_MLOCK: "true"
+      SKIP_SETCAP: "true"
+  composer:
+    environment:
+      VAULT_TOKEN: "token-composer"
+  object-storage:
+    environment:
+      VAULT_TOKEN: "token-object-storage"
+  video-editor:
+    environment:
+      VAULT_TOKEN: "token-video-editor"
+  notifications:
+    environment:
+      VAULT_TOKEN: "token-notifications"

@@ -1,0 +1,101 @@
+version: '3.8'
+services:
+  vault:
+    environment:
+      VAULT_SKIP_MLOCK: "true"
+      SKIP_SETCAP: "true"
+
+  composer-agent:
+    image: hashicorp/vault:latest
+    container_name: main-composer-agent-1
+    user: "0"
+    depends_on:
+      - vault
+    environment:
+      - VAULT_ADDR=http://vault:8200
+    networks:
+      - services-net
+    volumes:
+      - ./vault-agent/composer-agent.hcl:/etc/vault/agent.hcl:ro
+      - ./vault-agent/templates/composer.tpl:/etc/vault/templates/composer.tpl:ro
+      - vault-data:/vault/auth:ro
+      - composer-secrets:/vault/secrets
+    entrypoint: ["vault","agent","-config=/etc/vault/agent.hcl","-log-level=info"]
+
+  composer:
+    volumes:
+      - composer-secrets:/vault/secrets
+
+  video-editor-agent:
+    image: hashicorp/vault:latest
+    container_name: main-video-editor-agent-1
+    user: "0"
+    depends_on:
+      - vault
+    environment:
+      - VAULT_ADDR=http://vault:8200
+    networks:
+      - services-net
+    volumes:
+      - ./vault-agent/video-editor-agent.hcl:/etc/vault/agent.hcl:ro
+      - ./vault-agent/templates/video-editor.tpl:/etc/vault/templates/video-editor.tpl:ro
+      - vault-data:/vault/auth:ro
+      - video-editor-secrets:/vault/secrets
+    entrypoint: ["vault","agent","-config=/etc/vault/agent.hcl","-log-level=info"]
+
+  video-editor:
+    volumes:
+      - video-editor-secrets:/vault/secrets
+
+  notifications-agent:
+    image: hashicorp/vault:latest
+    container_name: main-notifications-agent-1
+    user: "0"
+    depends_on:
+      - vault
+    environment:
+      - VAULT_ADDR=http://vault:8200
+    networks:
+      - services-net
+    volumes:
+      - ./vault-agent/notifications-agent.hcl:/etc/vault/agent.hcl:ro
+      - ./vault-agent/templates/notifications.tpl:/etc/vault/templates/notifications.tpl:ro
+      - vault-data:/vault/auth:ro
+      - notifications-secrets:/vault/secrets
+    entrypoint: ["vault","agent","-config=/etc/vault/agent.hcl","-log-level=info"]
+
+  notifications:
+    volumes:
+      - notifications-secrets:/vault/secrets
+
+  object-storage-agent:
+    image: hashicorp/vault:latest
+    container_name: main-object-storage-agent-1
+    user: "0"
+    depends_on:
+      - vault
+    environment:
+      - VAULT_ADDR=http://vault:8200
+    networks:
+      - services-net
+    volumes:
+      - ./vault-agent/object-storage-agent.hcl:/etc/vault/agent.hcl:ro
+      - ./vault-agent/templates/object-storage.tpl:/etc/vault/templates/object-storage.tpl:ro
+      - vault-data:/vault/auth:ro
+      - object-storage-secrets:/vault/secrets
+    entrypoint: ["vault","agent","-config=/etc/vault/agent.hcl","-log-level=info"]
+
+  object-storage:
+    volumes:
+      - object-storage-secrets:/vault/secrets
+    networks:
+      - services-net
+
+volumes:
+  composer-secrets:
+  video-editor-secrets:
+  notifications-secrets:
+  object-storage-secrets:
+
+networks:
+  services-net:

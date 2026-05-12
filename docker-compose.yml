@@ -105,7 +105,6 @@ services:
       - composer-db-net    # Fala com db
       - backend-net        # Fala com keycloak
       - services-net       # Fala com object-storage, video-editor, notifications
-      - vault-net
     depends_on:
       db:
         condition: service_healthy
@@ -116,8 +115,6 @@ services:
       video-editor:
         condition: service_started
       notifications:
-        condition: service_started
-      vault:
         condition: service_started
     environment:
       DATABASE_URL: "postgresql://composer:composer@db:5432/composer"
@@ -156,32 +153,6 @@ services:
       # A forma correcta é usar um middleware de returncode — ver nota no README.
 
   # ---------------------------------------------------------------------------
-  # HashiCorp Vault — Storage for API Keys
-  # ---------------------------------------------------------------------------
-  vault:
-    image: hashicorp/vault:latest
-    entrypoint: ["vault"]
-    command: ["server", "-dev"]
-    environment:
-      VAULT_DEV_ROOT_TOKEN_ID: "root"
-      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
-    networks:
-      - vault-net
-    ports:
-      - "8200:8200"
-    restart: unless-stopped
-
-  vault-init:
-    image: hashicorp/vault:latest
-    depends_on:
-      - vault
-    networks:
-      - vault-net
-    volumes:
-      - ./vault_init.sh:/vault_init.sh:ro
-    entrypoint: ["/bin/sh", "/vault_init.sh"]
-
-  # ---------------------------------------------------------------------------
   # Object Storage Stub
   # ---------------------------------------------------------------------------
   object-storage:
@@ -190,7 +161,6 @@ services:
     networks:
       - services-net   # Fala com composer e video-editor
       - public-net     # Exposto via Traefik para o browser fazer streaming directo
-      - vault-net
     environment:
       OBJECT_STORAGE_API_KEY: "stub-api-key"
       VAULT_ADDR: "http://vault:8200"
@@ -213,7 +183,6 @@ services:
       context: ../video-editor
     networks:
       - services-net   # Só acessível pelo composer — sem acesso ao exterior
-      - vault-net
     environment:
       VIDEO_EDITOR_API_KEY: "stub-api-key"
       VAULT_ADDR: "http://vault:8200"
@@ -228,13 +197,10 @@ services:
     networks:
       - services-net   # Só acessível pelo composer — sem acesso ao exterior
       - public-net     # Exposto via Traefik para links públicos nos emails
-      - vault-net
     environment:
       NOTIFICATIONS_API_KEY: "stub-api-key"
       DATABASE_URL: "sqlite:////app/notifications.db"
       NOTIFICATIONS_BASE_URL: "http://uastream.com"
-      VAULT_ADDR: "http://vault:8200"
-      VAULT_TOKEN: "token-notifications"
       SMTP_HOST: "smtp.gmail.com"
       SMTP_PORT: "587"
       SMTP_USER: "egsnotificationsservice@gmail.com"
@@ -242,12 +208,52 @@ services:
       SMTP_FROM: "egsnotificationsservice@gmail.com"
       SMTP_USE_TLS: "true"
       SMTP_USE_SSL: "false"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "token-notifications"
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=main_public-net"
       - "traefik.http.routers.notifications.rule=Host(`uastream.com`) && PathPrefix(`/notifications`)"
       - "traefik.http.routers.notifications.entrypoints=web"
       - "traefik.http.services.notifications.loadbalancer.server.port=8080"
+
+  # ---------------------------------------------------------------------------
+  # HashiCorp Vault — Secrets management (dev mode for demo)
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:latest
+    command: server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      # Dev-only flags removed; keep production-safe defaults here.
+    volumes:
+      - vault-data:/vault/data
+    networks:
+      - backend-net
+      - services-net
+    healthcheck:
+      test: ["CMD-SHELL", "vault status || true"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  vault-init:
+    image: hashicorp/vault:latest
+    entrypoint: ["sh","/vault-init/vault_init.sh"]
+    user: "0"
+    environment:
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_TOKEN: "root"
+    volumes:
+      - ./vault_init.sh:/vault-init/vault_init.sh:ro
+      - vault-data:/vault/data
+    networks:
+      - backend-net
+    depends_on:
+      vault:
+        condition: service_healthy
+    restart: "no"
 
 # =============================================================================
 # Redes
@@ -257,11 +263,6 @@ networks:
     # Única rede com ligação ao exterior via Traefik.
     # Apenas traefik, composer e keycloak (para OAuth redirect) estão aqui.
     driver: bridge
-
-  vault-net:
-    # Rede para serviços acederem ao Vault
-    driver: bridge
-    internal: true
 
   composer-db-net:
     # Rede privada entre o composer e a sua base de dados.
@@ -286,3 +287,4 @@ networks:
 volumes:
   pgdata:
   kc-pgdata:
+  vault-data:
