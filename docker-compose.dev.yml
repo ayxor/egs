@@ -1,8 +1,13 @@
 services:
   vault:
+    cap_add:
+      - IPC_LOCK
     environment:
       VAULT_SKIP_MLOCK: "true"
       SKIP_SETCAP: "true"
+  vault-init:
+    cap_add:
+      - IPC_LOCK
   composer:
     environment:
       VAULT_TOKEN: "token-composer"

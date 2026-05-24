@@ -15,11 +15,13 @@ services:
     ports:
       - "80:80"        # Tráfego HTTP público (uastream.com)
       - "8080:8080"    # Dashboard Traefik (só em desenvolvimento)
+      - "8082:8082"    # Métricas Prometheus do Traefik
     volumes:
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro   # Traefik lê labels dos containers
     networks:
       - public-net     # Única rede com acesso ao exterior
+      - services-net   # Acesso privado pelo Prometheus para raspar métricas
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -254,6 +256,53 @@ services:
       vault:
         condition: service_healthy
     restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Prometheus — Métricas Time-Series Database
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: main-prometheus-1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - services-net
+    ports:
+      - "9090:9090"
+
+  # ---------------------------------------------------------------------------
+  # cAdvisor — Container Resource monitoring
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: main-cadvisor-1
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - services-net
+    ports:
+      - "8095:8080"
+
+  # ---------------------------------------------------------------------------
+  # Grafana — Visualização de Dashboards
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: main-grafana-1
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    networks:
+      - services-net
+      - public-net
+    ports:
+      - "3000:3000"
 
 # =============================================================================
 # Redes
