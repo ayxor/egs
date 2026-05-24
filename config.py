@@ -2,20 +2,32 @@
 
 import os
 import hvac
+import time
 
 def get_vault_secret(secret_path, env_fallback, default_val=""):
     vault_addr = os.environ.get("VAULT_ADDR")
     vault_token = os.environ.get("VAULT_TOKEN")
-    
-    if vault_addr and vault_token:
+
+    if not (vault_addr and vault_token):
+        return os.environ.get(env_fallback, default_val)
+
+    attempts = 5
+    delay = 0.5
+    for attempt in range(1, attempts + 1):
         try:
             client = hvac.Client(url=vault_addr, token=vault_token)
             if client.is_authenticated():
                 response = client.secrets.kv.v2.read_secret_version(path=secret_path)
                 return response['data']['data']['api_key']
+            else:
+                print(f"Vault auth failed on attempt {attempt}")
         except Exception as e:
-            print(f"Failed to fetch {secret_path} from Vault: {e}")
-            
+            print(f"Failed to fetch {secret_path} from Vault (attempt {attempt}): {e}")
+
+        if attempt < attempts:
+            time.sleep(delay)
+            delay = min(delay * 2, 5)
+
     return os.environ.get(env_fallback, default_val)
 
 # Keycloak / IAM
