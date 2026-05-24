@@ -41,22 +41,6 @@ import ssl
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import hvac
-
-def get_vault_secret(secret_path, env_fallback, default_val="stub-api-key"):
-    vault_addr = os.environ.get("VAULT_ADDR")
-    vault_token = os.environ.get("VAULT_TOKEN")
-    
-    if vault_addr and vault_token:
-        try:
-            client = hvac.Client(url=vault_addr, token=vault_token)
-            if client.is_authenticated():
-                response = client.secrets.kv.v2.read_secret_version(path=secret_path)
-                return response['data']['data']['api_key']
-        except Exception as e:
-            log.warning("Failed to fetch %s from Vault: %s", secret_path, e)
-            
-    return os.environ.get(env_fallback, default_val)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -93,7 +77,7 @@ _API_SECURITY = [{"ApiKeyAuth": []}]
 # Endpoints exempt from API key check:
 #   - track_open        → tracking pixel (called by external mail clients)
 #   - openapi.*         → Swagger UI, openapi.json, static assets (endpoint prefix)
-_PUBLIC_ENDPOINTS = {"track_open"}
+_PUBLIC_ENDPOINTS = {"track_open", "get_metrics"}
 # Covers openapi.*, swagger.*, redoc.*, rapidoc.*, scalar.*, elements.*
 _PUBLIC_ENDPOINT_PREFIXES = ("openapi.", "swagger.", "redoc.", "rapidoc.", "scalar.", "elements.")
 
@@ -124,7 +108,7 @@ db = SQLAlchemy(app)
 # API key auth
 # ---------------------------------------------------------------------------
 
-API_KEY = get_vault_secret("notifications", "NOTIFICATIONS_API_KEY")
+API_KEY = os.environ.get("NOTIFICATIONS_API_KEY", "stub-api-key")
 
 # Base URL used to build the tracking pixel URL embedded in emails.
 BASE_URL = os.environ.get("NOTIFICATIONS_BASE_URL", "http://uastream.com")
@@ -434,6 +418,22 @@ def get_template(path: TemplatePath):
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
+@app.get("/metrics")
+def get_metrics():
+    try:
+        sent = Notification.query.filter_by(status="sent").count()
+        opened = Notification.query.filter_by(status="opened").count()
+        failed = Notification.query.filter_by(status="failed").count()
+    except Exception:
+        sent = opened = failed = 0
+    
+    metrics = [
+        f"notifications_emails_total{{status=\"sent\"}} {sent}",
+        f"notifications_emails_total{{status=\"opened\"}} {opened}",
+        f"notifications_emails_total{{status=\"failed\"}} {failed}",
+    ]
+    return Response("\n".join(metrics) + "\n", mimetype="text/plain")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
