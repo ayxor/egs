@@ -15,20 +15,32 @@ import subprocess
 import re
 import select
 import hvac
+import time
 
 def get_vault_secret(secret_path, env_fallback, default_val="stub-api-key"):
     vault_addr = os.environ.get("VAULT_ADDR")
     vault_token = os.environ.get("VAULT_TOKEN")
-    
-    if vault_addr and vault_token:
+
+    if not (vault_addr and vault_token):
+        return os.environ.get(env_fallback, default_val)
+
+    attempts = 5
+    delay = 0.5
+    for attempt in range(1, attempts + 1):
         try:
             client = hvac.Client(url=vault_addr, token=vault_token)
             if client.is_authenticated():
                 response = client.secrets.kv.v2.read_secret_version(path=secret_path)
                 return response['data']['data']['api_key']
+            else:
+                print(f"Vault auth failed on attempt {attempt}")
         except Exception as e:
-            print(f"Failed to fetch {secret_path} from Vault: {e}")
-            
+            print(f"Failed to fetch {secret_path} from Vault (attempt {attempt}): {e}")
+
+        if attempt < attempts:
+            time.sleep(delay)
+            delay = min(delay * 2, 5)
+
     return os.environ.get(env_fallback, default_val)
 
 app = Flask(__name__)
@@ -229,6 +241,24 @@ def get_thumbnail(job_id):
     path = os.path.join(JOB_DIR, job_id, "thumb.jpg")
     if not os.path.exists(path): return jsonify({"error": "result not ready"}), 404
     return send_file(path, mimetype="image/jpeg")
+
+@app.route("/metrics", methods=["GET"])
+def get_metrics():
+    with _jobs_lock:
+        queued = sum(1 for j in _jobs.values() if j.get("status") == "queued")
+        processing = sum(1 for j in _jobs.values() if j.get("status") == "processing")
+        done = sum(1 for j in _jobs.values() if j.get("status") == "done")
+        failed = sum(1 for j in _jobs.values() if j.get("status") == "failed")
+        cancelled = sum(1 for j in _jobs.values() if j.get("status") == "cancelled")
+    
+    metrics = [
+        f"video_editor_jobs_total{{status=\"queued\"}} {queued}",
+        f"video_editor_jobs_total{{status=\"processing\"}} {processing}",
+        f"video_editor_jobs_total{{status=\"done\"}} {done}",
+        f"video_editor_jobs_total{{status=\"failed\"}} {failed}",
+        f"video_editor_jobs_total{{status=\"cancelled\"}} {cancelled}",
+    ]
+    return Response("\n".join(metrics) + "\n", mimetype="text/plain")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
