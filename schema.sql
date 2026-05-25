@@ -57,3 +57,12 @@ CREATE INDEX IF NOT EXISTS idx_videos_uploader    ON videos(uploader_id);
 CREATE INDEX IF NOT EXISTS idx_videos_deleted     ON videos(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_video         ON processing_jobs(video_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_external      ON processing_jobs(external_job_id);
+
+-- Static seed data synced with Keycloak realm-egs.json
+INSERT INTO users (keycloak_user_id, email, name, role, institution)
+VALUES ('ae3012a2-df6c-4f26-9203-f70e2f078d97', 'professor@ua.pt', 'Professor User', 'professor', 'Universidade de Aveiro')
+ON CONFLICT (email) DO UPDATE SET keycloak_user_id = 'ae3012a2-df6c-4f26-9203-f70e2f078d97', role = 'professor';
+
+INSERT INTO users (keycloak_user_id, email, name, role, institution)
+VALUES ('10755f63-cd46-41b5-9f77-ef11b308cd40', 'student@ua.pt', 'Student User', 'student', 'Universidade de Aveiro')
+ON CONFLICT (email) DO UPDATE SET keycloak_user_id = '10755f63-cd46-41b5-9f77-ef11b308cd40', role = 'student';
