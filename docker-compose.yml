@@ -224,6 +224,8 @@ services:
   # ---------------------------------------------------------------------------
   vault:
     image: hashicorp/vault:latest
+    cap_add:
+      - IPC_LOCK
     command: server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: root
@@ -242,6 +244,8 @@ services:
 
   vault-init:
     image: hashicorp/vault:latest
+    cap_add:
+      - IPC_LOCK
     entrypoint: ["sh","/vault-init/vault_init.sh"]
     user: "0"
     environment:
