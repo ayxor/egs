@@ -14,9 +14,6 @@ ensure_worktree() {
 
   if [[ -d "$target_dir" ]]; then
     echo "[ok] $branch already present at $target_dir"
-    echo "[info] Updating $branch in $target_dir"
-    git -C "$target_dir" fetch origin "$branch"
-    git -C "$target_dir" pull --ff-only origin "$branch"
     return 0
   fi
 
@@ -39,3 +36,13 @@ done
 echo "[info] Starting stack from $REPO_ROOT"
 cd "$REPO_ROOT"
 docker compose up --build -d
+
+echo "[info] Waiting for Keycloak IAM to be ready (this can take up to 20-30 seconds)..."
+until [ "$(curl -s -o /dev/null -w "%{http_code}" -H "Host: uastream.com" http://localhost/realms/egs)" -eq 200 ]; do
+  sleep 2
+done
+
+echo "[info] Keycloak is ready! Seeding database users..."
+./seed_users.sh
+
+echo "[info] UAStream platform started and seeded successfully! Configure uastream.com in /etc/hosts and open http://uastream.com to test."

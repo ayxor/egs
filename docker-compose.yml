@@ -230,7 +230,8 @@ services:
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: root
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
-      # Dev-only flags removed; keep production-safe defaults here.
+      VAULT_SKIP_MLOCK: "true"
+      SKIP_SETCAP: "true"
     volumes:
       - vault-data:/vault/data
     networks:
