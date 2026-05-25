@@ -14,7 +14,7 @@ providers:
   docker:
     # Traefik lê as labels dos containers automaticamente
     exposedByDefault: false   # Só expõe containers que tenham traefik.enable=true
-    network: main_public-net   # Nome completo com prefixo do projecto Docker Compose
+    network: egs_public-net   # Nome completo com prefixo do projecto Docker Compose
 
 log:
   level: INFO

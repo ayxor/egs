@@ -1,3 +1,4 @@
+name: egs
 services:
 
   # ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ services:
         condition: service_healthy
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=main_public-net"
+      - "traefik.docker.network=egs_public-net"
       - "traefik.http.routers.keycloak.rule=Host(`uastream.com`) && PathPrefix(`/realms`, `/resources`, `/js`)"
       - "traefik.http.routers.keycloak.entrypoints=web"
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
@@ -139,7 +140,7 @@ services:
       VAULT_TOKEN: "token-composer"
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=main_public-net"
+      - "traefik.docker.network=egs_public-net"
       # Rota principal — tudo o que não encaixar nas outras rotas vai para o composer
       - "traefik.http.routers.composer.rule=Host(`uastream.com`)"
       - "traefik.http.routers.composer.entrypoints=web"
@@ -169,7 +170,7 @@ services:
       VAULT_TOKEN: "token-object-storage"
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=main_public-net"
+      - "traefik.docker.network=egs_public-net"
       # O browser acede directamente ao object-storage para streaming de vídeo
       # (Range Requests). O Traefik calcula prioridade automaticamente pelo
       # comprimento da regra — PathPrefix(/objects) ganha ao composer.
@@ -214,7 +215,7 @@ services:
       VAULT_TOKEN: "token-notifications"
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=main_public-net"
+      - "traefik.docker.network=egs_public-net"
       - "traefik.http.routers.notifications.rule=Host(`uastream.com`) && PathPrefix(`/notifications`)"
       - "traefik.http.routers.notifications.entrypoints=web"
       - "traefik.http.services.notifications.loadbalancer.server.port=8080"
@@ -250,7 +251,7 @@ services:
   # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
-    container_name: main-prometheus-1
+    container_name: egs-prometheus-1
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
@@ -263,7 +264,7 @@ services:
   # ---------------------------------------------------------------------------
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: main-cadvisor-1
+    container_name: egs-cadvisor-1
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -280,7 +281,7 @@ services:
   # ---------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
-    container_name: main-grafana-1
+    container_name: egs-grafana-1
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
