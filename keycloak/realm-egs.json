@@ -97,7 +97,58 @@
     }
   },
 
-  "users": [],
+  "users": [
+    {
+      "id": "ae3012a2-df6c-4f26-9203-f70e2f078d97",
+      "username": "professor@ua.pt",
+      "email": "professor@ua.pt",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Professor",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "professor",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "role": ["professor"],
+        "institution": ["Universidade de Aveiro"]
+      }
+    },
+    {
+      "id": "10755f63-cd46-41b5-9f77-ef11b308cd40",
+      "username": "student@ua.pt",
+      "email": "student@ua.pt",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Student",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "student",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "role": ["student"],
+        "institution": ["Universidade de Aveiro"]
+      }
+    },
+    {
+      "username": "service-account-egs-platform",
+      "enabled": true,
+      "serviceAccountClientId": "egs-platform",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users"
+        ]
+      }
+    }
+  ],
 
   "scopeMappings": [],
 
