@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-init
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  vault_init.sh: |
+    #!/bin/sh
+    echo "Waiting for Vault to start..."
+    until wget -q -O - http://vault:8200/v1/sys/health > /dev/null; do
+      sleep 1
+    done
+    echo "Vault is up. Configuring..."
+    export VAULT_ADDR='http://vault:8200'
+    export VAULT_TOKEN='root'
+    vault secrets enable -path=secret kv-v2 || true
+    vault kv put secret/object-storage api_key="stub-api-key"
+    vault kv put secret/video-editor api_key="stub-api-key"
+    vault kv put secret/notifications api_key="stub-api-key"
+    cat <<EOF | vault policy write composer-policy -
+    path "secret/data/object-storage" { capabilities = ["read"] }
+    path "secret/data/video-editor" { capabilities = ["read"] }
+    path "secret/data/notifications" { capabilities = ["read"] }
+    EOF
+    cat <<EOF | vault policy write video-editor-policy -
+    path "secret/data/video-editor" { capabilities = ["read"] }
+    path "secret/data/object-storage" { capabilities = ["read"] }
+    EOF
+    cat <<EOF | vault policy write object-storage-policy -
+    path "secret/data/object-storage" { capabilities = ["read"] }
+    EOF
+    cat <<EOF | vault policy write notifications-policy -
+    path "secret/data/notifications" { capabilities = ["read"] }
+    EOF
+    vault token create -id="token-composer" -policy="composer-policy"
+    vault token create -id="token-video-editor" -policy="video-editor-policy"
+    vault token create -id="token-object-storage" -policy="object-storage-policy"
+    vault token create -id="token-notifications" -policy="notifications-policy"
+    echo "Vault initialization complete!"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  namespace: tenant-grupo8-egs-deti-ua-pt
+  labels:
+    app: vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: vault
+          image: hashicorp/vault:latest
+          command:
+            - vault
+            - server
+            - -dev
+          env:
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              value: root
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: 0.0.0.0:8200
+            - name: VAULT_SKIP_MLOCK
+              value: "true"
+          ports:
+            - containerPort: 8200
+          securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 8200
+      targetPort: 8200
+  selector:
+    app: vault
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-init
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: vault-init
+          image: hashicorp/vault:latest
+          command:
+            - /bin/sh
+            - /vault_init.sh
+          volumeMounts:
+            - name: vault-init-volume
+              mountPath: /vault_init.sh
+              subPath: vault_init.sh
+      volumes:
+        - name: vault-init-volume
+          configMap:
+            name: vault-init
+            defaultMode: 493

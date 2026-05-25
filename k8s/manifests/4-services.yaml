@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: object-storage
+  namespace: tenant-grupo8-egs-deti-ua-pt
+  labels:
+    app: object-storage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: object-storage
+  template:
+    metadata:
+      labels:
+        app: object-storage
+    spec:
+      containers:
+        - name: object-storage
+          image: registry.deti/tenant-grupo8-egs-deti-ua-pt/object-storage:v1
+          env:
+            - name: OBJECT_STORAGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: OBJECT_STORAGE_API_KEY
+            - name: VAULT_ADDR
+              value: http://vault:8200
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: VAULT_TOKEN
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: object-storage
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: object-storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-editor
+  namespace: tenant-grupo8-egs-deti-ua-pt
+  labels:
+    app: video-editor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: video-editor
+  template:
+    metadata:
+      labels:
+        app: video-editor
+    spec:
+      containers:
+        - name: video-editor
+          image: registry.deti/tenant-grupo8-egs-deti-ua-pt/video-editor:v1
+          env:
+            - name: VIDEO_EDITOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: VIDEO_EDITOR_API_KEY
+            - name: VAULT_ADDR
+              value: http://vault:8200
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: VAULT_TOKEN
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-editor
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: video-editor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications
+  namespace: tenant-grupo8-egs-deti-ua-pt
+  labels:
+    app: notifications
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifications
+  template:
+    metadata:
+      labels:
+        app: notifications
+    spec:
+      containers:
+        - name: notifications
+          image: registry.deti/tenant-grupo8-egs-deti-ua-pt/notifications:v1
+          env:
+            - name: NOTIFICATIONS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: NOTIFICATIONS_API_KEY
+            - name: NOTIFICATIONS_BASE_URL
+              value: http://notifications:8080
+            - name: DATABASE_URL
+              value: sqlite:////app/notifications.db
+            - name: VAULT_ADDR
+              value: http://vault:8200
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: VAULT_TOKEN
+            - name: SMTP_HOST
+              value: "smtp.gmail.com"
+            - name: SMTP_PORT
+              value: "587"
+            - name: SMTP_USER
+              value: "egsnotificationsservice@gmail.com"
+            - name: SMTP_PASSWORD
+              value: "thockzhzntwjcaxe"
+            - name: SMTP_FROM
+              value: "egsnotificationsservice@gmail.com"
+            - name: SMTP_USE_TLS
+              value: "true"
+            - name: SMTP_USE_SSL
+              value: "false"
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notifications
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: notifications

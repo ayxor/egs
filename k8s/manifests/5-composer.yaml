@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: composer
+  namespace: tenant-grupo8-egs-deti-ua-pt
+  labels:
+    app: composer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: composer
+  template:
+    metadata:
+      labels:
+        app: composer
+    spec:
+      initContainers:
+        - name: wait-for-keycloak
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - until nc -z keycloak 8080; do echo waiting for keycloak:8080; sleep 2; done
+      containers:
+        - name: composer
+          image: registry.deti/tenant-grupo8-egs-deti-ua-pt/composer:v1
+          env:
+            - name: DATABASE_URL
+              value: postgresql://composer:composer@db:5432/composer
+            - name: KEYCLOAK_URL
+              value: http://keycloak:8080
+            - name: KEYCLOAK_PUBLIC_URL
+              value: http://uastream.com
+            - name: KEYCLOAK_REALM
+              value: egs
+            - name: KEYCLOAK_CLIENT_ID
+              value: egs-platform
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: KEYCLOAK_CLIENT_SECRET
+            - name: OBJECT_STORAGE_URL
+              value: http://object-storage:8080
+            - name: OBJECT_STORAGE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: OBJECT_STORAGE_API_KEY
+            - name: VIDEO_EDITOR_URL
+              value: http://video-editor:8080
+            - name: VIDEO_EDITOR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: VIDEO_EDITOR_API_KEY
+            - name: NOTIFICATIONS_URL
+              value: http://notifications:8080
+            - name: NOTIFICATIONS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: NOTIFICATIONS_API_KEY
+            - name: COMPOSER_BASE_URL
+              value: http://composer:8080
+            - name: VAULT_ADDR
+              value: http://vault:8200
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: VAULT_TOKEN
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: composer
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: composer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: uastream
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: uastream.com
+      http:
+        paths:
+          - path: /realms
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
+          - path: /resources
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
+          - path: /js
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
+          - path: /objects
+            pathType: Prefix
+            backend:
+              service:
+                name: object-storage
+                port:
+                  number: 8080
+          - path: /notifications
+            pathType: Prefix
+            backend:
+              service:
+                name: notifications
+                port:
+                  number: 8080
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: composer
+                port:
+                  number: 8080

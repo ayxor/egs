@@ -1,0 +1,332 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  realm-egs.json: |
+    {
+      "realm": "egs",
+      "displayName": "UAStream EGS Platform",
+      "enabled": true,
+      "sslRequired": "external",
+      "registrationAllowed": true,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "bruteForceProtected": true,
+      "permanentLockout": false,
+      "maxFailureWaitSeconds": 900,
+      "minimumQuickLoginWaitSeconds": 60,
+      "waitIncrementSeconds": 60,
+      "quickLoginCheckMilliSeconds": 1000,
+      "maxDeltaTimeSeconds": 43200,
+      "failureFactor": 10,
+      "accessTokenLifespan": 3600,
+      "refreshTokenMaxReuse": 0,
+      "ssoSessionMaxLifespan": 36000,
+      "offlineSessionMaxLifespanEnabled": false,
+      "clients": [
+        {
+          "clientId": "egs-platform",
+          "name": "UAStream Composer Client",
+          "description": "Confidential client used by the Composer service to authenticate users, refresh tokens, and create new accounts via the Admin REST API.",
+          "enabled": true,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "change-me-in-production",
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": true,
+          "authorizationServicesEnabled": false,
+          "alwaysDisplayInConsole": false,
+          "frontchannelLogout": false,
+          "protocol": "openid-connect",
+          "redirectUris": [
+            "http://uastream.com/*",
+            "http://localhost:8091/*", "http://localhost:8090/*",
+            "http://127.0.0.1:8090/*",
+            "http://localhost:8080/*",
+            "http://127.0.0.1:8080/*"
+          ],
+          "webOrigins": [
+            "http://localhost:8091", "http://localhost:8090",
+            "http://127.0.0.1:8090",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080"
+          ],
+          "attributes": {
+            "post.logout.redirect.uris": "http://uastream.com/*##http://localhost:8091/*##http://localhost:8090/*##http://127.0.0.1:8090/*##http://localhost:8080/*##http://127.0.0.1:8080/*",
+            "access.token.lifespan": "3600"
+          },
+          "protocolMappers": [
+            {
+              "name": "role-claim",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-attribute-mapper",
+              "consentRequired": false,
+              "config": {
+                "userinfo.token.claim": "true",
+                "user.attribute": "role",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "claim.name": "role",
+                "jsonType.label": "String",
+                "multivalued": "false",
+                "aggregate.attrs": "false"
+              }
+            },
+            {
+              "name": "institution-claim",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-attribute-mapper",
+              "consentRequired": false,
+              "config": {
+                "userinfo.token.claim": "true",
+                "user.attribute": "institution",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "claim.name": "institution",
+                "jsonType.label": "String",
+                "multivalued": "false",
+                "aggregate.attrs": "false"
+              }
+            }
+          ]
+        }
+      ],
+      "roles": {
+        "realm": [],
+        "client": {
+          "egs-platform": []
+        }
+      },
+      "users": [
+        {
+          "id": "ae3012a2-df6c-4f26-9203-f70e2f078d97",
+          "username": "professor@ua.pt",
+          "email": "professor@ua.pt",
+          "enabled": true,
+          "emailVerified": true,
+          "firstName": "Professor",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "professor",
+              "temporary": false
+            }
+          ],
+          "attributes": {
+            "role": ["professor"],
+            "institution": ["Universidade de Aveiro"]
+          }
+        },
+        {
+          "id": "10755f63-cd46-41b5-9f77-ef11b308cd40",
+          "username": "student@ua.pt",
+          "email": "student@ua.pt",
+          "enabled": true,
+          "emailVerified": true,
+          "firstName": "Student",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "student",
+              "temporary": false
+            }
+          ],
+          "attributes": {
+            "role": ["student"],
+            "institution": ["Universidade de Aveiro"]
+          }
+        },
+        {
+          "username": "service-account-egs-platform",
+          "enabled": true,
+          "serviceAccountClientId": "egs-platform",
+          "clientRoles": {
+            "realm-management": [
+              "manage-users"
+            ]
+          }
+        }
+      ],
+      "scopeMappings": [],
+      "clientScopeMappings": {},
+      "identityProviders": [],
+      "identityProviderMappers": [],
+      "components": {},
+      "internationalizationEnabled": false,
+      "supportedLocales": [],
+      "defaultLocale": "en",
+      "loginTheme": "uastream",
+      "accountTheme": "keycloak",
+      "adminTheme": "keycloak",
+      "emailTheme": "keycloak",
+      "eventsEnabled": false,
+      "adminEventsEnabled": false,
+      "adminEventsDetailsEnabled": false
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-theme
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  theme.properties: |
+    parent=keycloak
+    import=common/keycloak
+    styles=css/uastream.css
+    scripts=js/uastream.js
+  messages_en.properties: |
+    loginTitle=Sign in to UAStream
+    usernameOrEmail=Institutional Email
+    password=Password
+    logIn=Sign In
+    registerTitle=Register UAStream Account
+    email=Email Address
+    passwordConfirm=Confirm Password
+    role=Institution Role
+    institution=Academic Institution
+  uastream.css: |
+    /* Custom CSS styled and themed for the UAStream login experience */
+    body {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%) !important;
+      color: #f8fafc !important;
+      font-family: 'Outfit', 'Inter', sans-serif !important;
+    }
+    .card-pf {
+      background: rgba(30, 41, 59, 0.7) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-radius: 16px !important;
+      backdrop-filter: blur(12px) !important;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+    }
+    input[type="text"], input[type="password"] {
+      background: rgba(15, 23, 42, 0.6) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
+      border-radius: 8px !important;
+      color: #ffffff !important;
+    }
+    .btn-primary {
+      background: linear-gradient(90deg, #4f46e5 0%, #6366f1 100%) !important;
+      border: none !important;
+      border-radius: 8px !important;
+      font-weight: 600 !important;
+    }
+  uastream.js: |
+    /* Custom JavaScript loaded in the UAStream login page */
+    console.log("UAStream custom keycloak theme successfully loaded.");
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: tenant-grupo8-egs-deti-ua-pt
+  labels:
+    app: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - until pg_isready -h kc-db -p 5432; do echo waiting for kc-db; sleep 2; done
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.1
+          command:
+            - /opt/keycloak/bin/kc.sh
+            - start-dev
+            - --import-realm
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://kc-db:5432/keycloak
+            - name: KC_DB_USERNAME
+              value: keycloak
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_KEYCLOAK_PASSWORD
+            - name: KC_HTTP_PORT
+              value: "8080"
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9000
+              name: management
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            failureThreshold: 30
+            periodSeconds: 10
+          volumeMounts:
+            - name: realm-volume
+              mountPath: /opt/keycloak/data/import/realm-egs.json
+              subPath: realm-egs.json
+              readOnly: true
+            - name: theme-volume
+              mountPath: /opt/keycloak/themes/uastream/login/theme.properties
+              subPath: theme.properties
+              readOnly: true
+            - name: theme-volume
+              mountPath: /opt/keycloak/themes/uastream/login/messages/messages_en.properties
+              subPath: messages_en.properties
+              readOnly: true
+            - name: theme-volume
+              mountPath: /opt/keycloak/themes/uastream/login/resources/css/uastream.css
+              subPath: uastream.css
+              readOnly: true
+            - name: theme-volume
+              mountPath: /opt/keycloak/themes/uastream/login/resources/js/uastream.js
+              subPath: uastream.js
+              readOnly: true
+      volumes:
+        - name: realm-volume
+          configMap:
+            name: keycloak-realm
+        - name: theme-volume
+          configMap:
+            name: keycloak-theme
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: keycloak

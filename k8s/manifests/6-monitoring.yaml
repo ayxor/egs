@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+      evaluation_interval: 5s
+
+    scrape_configs:
+      - job_name: 'keycloak'
+        static_configs:
+          - targets: ['keycloak:9000']
+
+      - job_name: 'composer'
+        static_configs:
+          - targets: ['composer:8080']
+
+      - job_name: 'notifications'
+        static_configs:
+          - targets: ['notifications:8080']
+
+      - job_name: 'video-editor'
+        static_configs:
+          - targets: ['video-editor:8080']
+
+      - job_name: 'object-storage'
+        static_configs:
+          - targets: ['object-storage:8080']
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-providers
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'UAStream System Dashboards'
+        orgId: 1
+        folder: 'UAStream Monitoring'
+        type: file
+        disableDeletion: false
+        editable: true
+        updateIntervalSeconds: 10
+        options:
+          path: /etc/grafana/provisioning/dashboards/files
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:latest
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/prometheus/
+      volumes:
+        - name: config-volume
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 9090
+      targetPort: 9090
+  selector:
+    app: prometheus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: admin
+          volumeMounts:
+            - name: datasources-volume
+              mountPath: /etc/grafana/provisioning/datasources/
+            - name: providers-volume
+              mountPath: /etc/grafana/provisioning/dashboards/
+            - name: dashboard-files-volume
+              mountPath: /etc/grafana/provisioning/dashboards/files/
+      volumes:
+        - name: datasources-volume
+          configMap:
+            name: grafana-datasources
+        - name: providers-volume
+          configMap:
+            name: grafana-providers
+        - name: dashboard-files-volume
+          configMap:
+            name: grafana-dashboard-files
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+  selector:
+    app: grafana
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: grafana.uastream.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
