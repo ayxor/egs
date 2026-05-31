@@ -283,8 +283,8 @@ function renderVideoCards(targetId) {
   // Library Page / Default Grid Rendering
   // -------------------------------------------------------------
   let channelsHtml = "";
-  if (state.filter !== "videos" && state.filter !== "myclasses" && state.searchedChannels && state.searchedChannels.length > 0) {
-    const heading = state.query ? "Matched Channels" : "Course Channels";
+  if (state.filter !== "videos" && state.searchedChannels && state.searchedChannels.length > 0) {
+    const heading = state.query ? "Matched Channels" : "Public Course Channels";
     channelsHtml = `
       <div style="grid-column: 1 / -1; margin-bottom: 8px;">
         <h3 style="font-family: 'Space Grotesk', sans-serif; margin-bottom: 12px; color: var(--text);">${escapeHtml(heading)}</h3>
@@ -308,7 +308,15 @@ function renderVideoCards(targetId) {
 
   const videos = filteredVideos();
   let videosHtml = "";
-  if (state.filter !== "classes" && state.filter !== "myclasses") {
+  let videosHeadingHtml = "";
+  if (state.filter !== "classes") {
+    if (videos.length > 0) {
+      videosHeadingHtml = `
+        <div style="grid-column: 1 / -1; margin-bottom: 12px; margin-top: 12px;">
+          <h3 style="font-family: 'Space Grotesk', sans-serif; color: var(--text);">Videos</h3>
+        </div>
+      `;
+    }
     videosHtml = videos
       .map((video) => `
         <article class="video-card card">
@@ -329,42 +337,13 @@ function renderVideoCards(targetId) {
       .join("");
   }
 
-  // "My Classes" section — subscribed channels
-  let myClassesHtml = "";
-  const showMyClasses = (state.filter === "myclasses") || (state.filter !== "videos" && !state.query);
-  if (showMyClasses && state.myChannels && state.myChannels.length > 0) {
-    const heading = state.filter === "myclasses" ? "📚 My Subscribed Classes" : "📚 My Classes";
-    myClassesHtml = `
-      <div style="grid-column: 1 / -1; margin-bottom: 8px;">
-        <h3 style="font-family: 'Space Grotesk', sans-serif; margin-bottom: 12px; color: var(--text);">${heading}</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
-          ${state.myChannels.map(c => `
-            <a href="/channel/${c.id}" class="card" style="padding: 16px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; transition: all 0.2s; position: relative;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--line)'">
-              <span class="badge-pill ${c.visibility || 'public'}" style="position: absolute; top: 12px; right: 12px; font-size: 0.65rem; padding: 2px 6px;">
-                ${(c.visibility || 'public') === 'private' ? '🔒 Private' : (c.visibility || 'public') === 'unlisted' ? '🔗 Unlisted' : '🌐 Public'}
-              </span>
-              <p class="eyebrow" style="margin: 0; font-size: 0.72rem;">${escapeHtml(c.course_code || 'Class Channel')}</p>
-              <h4 style="margin: 4px 0 2px 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; color: var(--text);">${escapeHtml(c.name)}</h4>
-              <p class="muted" style="font-size: 0.82rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; height: 34px;">${escapeHtml(c.description || 'No class description.')}</p>
-              <div style="margin-top: 8px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px;">Lecturer: <strong style="color: var(--text);">${escapeHtml(c.owner_name || 'Institution Lecturer')}</strong></div>
-            </a>
-          `).join("")}
-        </div>
-        ${state.filter !== "myclasses" ? '<hr style="border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px 0;">' : ''}
-      </div>
-    `;
-  }
+  host.innerHTML = channelsHtml + videosHeadingHtml + videosHtml;
 
-  host.innerHTML = myClassesHtml + channelsHtml + videosHtml;
+  const hasChannels = state.filter !== "videos" && state.searchedChannels && state.searchedChannels.length > 0;
+  const hasVideos = state.filter !== "classes" && videos.length > 0;
 
-  const hasMyClasses = showMyClasses && state.myChannels && state.myChannels.length > 0;
-  const hasChannels = state.filter !== "videos" && state.filter !== "myclasses" && state.searchedChannels && state.searchedChannels.length > 0;
-  const hasVideos = state.filter !== "classes" && state.filter !== "myclasses" && videos.length > 0;
-
-  if (!hasMyClasses && !hasChannels && !hasVideos) {
-    if (state.filter === "myclasses") {
-      host.innerHTML = '<article class="card empty">You have not subscribed to any classes yet. Browse the library and join a class!</article>';
-    } else if (state.filter === "classes") {
+  if (!hasChannels && !hasVideos) {
+    if (state.filter === "classes") {
       host.innerHTML = '<article class="card empty">No course channels matched your search.</article>';
     } else if (state.filter === "videos") {
       host.innerHTML = '<article class="card empty">No lectures matched your search.</article>';
@@ -372,7 +351,7 @@ function renderVideoCards(targetId) {
       host.innerHTML = '<article class="card empty">No videos or channels matched your search.</article>';
     }
   } else if (!hasVideos && state.filter === "all") {
-    host.innerHTML = myClassesHtml + channelsHtml + '<article class="card empty" style="grid-column: 1 / -1;">No matching videos found in this catalog.</article>';
+    host.innerHTML = channelsHtml + '<article class="card empty" style="grid-column: 1 / -1;">No matching videos found in this catalog.</article>';
   }
 }
 
