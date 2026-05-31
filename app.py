@@ -598,6 +598,7 @@ def get_channel_endpoint(channel_id):
                 "course": v["course"],
                 "subject": v["subject"],
                 "status": v["status"],
+                "duration": v.get("duration"),
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
                 "views": v.get("views", 0),
@@ -764,6 +765,7 @@ def list_subscribed_videos():
                 "tags": v["tags"] or [],
                 "course": v["course"],
                 "subject": v["subject"],
+                "duration": v.get("duration"),
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
                 "channel_id": str(v["channel_id"]) if v.get("channel_id") else None,
@@ -881,6 +883,42 @@ def upload_video_endpoint():
     return jsonify({"video_id": str(video["id"])}), 201
 
 
+def parse_mp4_duration(data: bytes) -> float:
+    idx = data.find(b'mvhd')
+    if idx == -1:
+        return 0.0
+    
+    if idx + 24 > len(data):
+        return 0.0
+
+    version = data[idx + 4]
+    
+    if version == 0:
+        time_scale = int.from_bytes(data[idx + 16 : idx + 20], byteorder='big')
+        duration = int.from_bytes(data[idx + 20 : idx + 24], byteorder='big')
+    elif version == 1:
+        if idx + 36 > len(data):
+            return 0.0
+        time_scale = int.from_bytes(data[idx + 24 : idx + 28], byteorder='big')
+        duration = int.from_bytes(data[idx + 28 : idx + 36], byteorder='big')
+    else:
+        return 0.0
+        
+    if time_scale > 0:
+        return float(duration) / float(time_scale)
+    return 0.0
+
+def format_duration(seconds: float) -> str:
+    s = int(round(seconds))
+    if s <= 0:
+        return "0:05"
+    h = s // 3600
+    m = (s % 3600) // 60
+    r = s % 60
+    if h > 0:
+        return f"{h}:{m:02d}:{r:02d}"
+    return f"{m}:{r:02d}"
+
 def _run_processing_job_in_background(video_id, external_job_id, bucket, processed_key, thumb_key, title, channel_id, user_email, user_name):
     """Actively polls the passive Video Editor, uploads results, and finalizes DB."""
     logger.info("Spawning background thread for video finalization of video_id: %s, job_id: %s", video_id, external_job_id)
@@ -907,6 +945,15 @@ def _run_processing_job_in_background(video_id, external_job_id, bucket, process
                     processed_bytes = services.download_job_result(external_job_id)
                     services.upload_object(bucket, processed_key, processed_bytes)
                     
+                    duration_str = None
+                    try:
+                        duration_secs = parse_mp4_duration(processed_bytes)
+                        if duration_secs > 0:
+                            duration_str = format_duration(duration_secs)
+                            logger.info("Parsed video duration: %s secs -> %s", duration_secs, duration_str)
+                    except Exception as parse_ex:
+                        logger.error("Failed to parse MP4 duration: %s", parse_ex)
+
                     # Pull thumbnail
                     try:
                         thumb_bytes = services.download_job_thumbnail(external_job_id)
@@ -915,7 +962,7 @@ def _run_processing_job_in_background(video_id, external_job_id, bucket, process
                         logger.error("Failed to pull thumbnail for job %s: %s", external_job_id, e)
 
                     # Finalise video in DB
-                    db.update_video_status(video_id, "ready", processed_key, thumbnail_key=thumb_key)
+                    db.update_video_status(video_id, "ready", processed_key, thumbnail_key=thumb_key, duration=duration_str)
                     db.update_processing_job(external_job_id, "done", 100, message="Processing complete.")
 
                     # Send notification to uploader
@@ -1122,6 +1169,7 @@ def list_my_videos_endpoint():
                 "course": v["course"],
                 "subject": v["subject"],
                 "status": v["status"],
+                "duration": v.get("duration"),
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
                 "views": v.get("views", 0),
@@ -1214,6 +1262,7 @@ def list_videos_endpoint():
                 "course": v["course"],
                 "subject": v["subject"],
                 "uploader_id": str(v["uploader_id"]),
+                "duration": v.get("duration"),
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
                 "channel_id": str(v["channel_id"]) if v.get("channel_id") else None,
@@ -1303,6 +1352,7 @@ def get_video_endpoint(video_id):
         "channel_id": str(channel_id) if channel_id else None,
         "channel_name": video.get("channel_name"),
         "views": video.get("views", 0),
+        "duration": video.get("duration"),
     }), 200
 
 

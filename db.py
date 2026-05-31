@@ -150,7 +150,7 @@ def get_videos_by_uploader(uploader_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id, views
+                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id, views, duration
                 FROM videos
                 WHERE uploader_id = %s AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -232,7 +232,7 @@ def search_videos(user_id=None, q=None, course=None, subject=None,
                 f"""
                 SELECT videos.id, videos.title, videos.description, videos.tags, videos.course, videos.subject,
                        videos.uploader_id, videos.status, videos.storage_bucket, videos.thumbnail_key, videos.created_at,
-                       videos.channel_id, videos.views, c.name AS channel_name, c.visibility AS channel_visibility,
+                       videos.channel_id, videos.views, videos.duration, c.name AS channel_name, c.visibility AS channel_visibility,
                        u.name AS uploader_name
                 FROM videos
                 LEFT JOIN channels c ON videos.channel_id = c.id
@@ -279,32 +279,23 @@ def delete_video(video_id):
             )
 
 
-def update_video_status(video_id, status, processed_storage_key=None, thumbnail_key=None):
+def update_video_status(video_id, status, processed_storage_key=None, thumbnail_key=None, duration=None):
     with _get_connection() as conn:
         with conn.cursor() as cur:
-            if processed_storage_key and thumbnail_key:
-                cur.execute(
-                    """
-                    UPDATE videos
-                    SET status = %s, processed_storage_key = %s, thumbnail_key = %s, updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (status, processed_storage_key, thumbnail_key, video_id),
-                )
-            elif processed_storage_key:
-                cur.execute(
-                    """
-                    UPDATE videos
-                    SET status = %s, processed_storage_key = %s, updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (status, processed_storage_key, video_id),
-                )
-            else:
-                cur.execute(
-                    "UPDATE videos SET status = %s, updated_at = NOW() WHERE id = %s",
-                    (status, video_id),
-                )
+            updates = ["status = %s", "updated_at = NOW()"]
+            params = [status]
+            if processed_storage_key:
+                updates.append("processed_storage_key = %s")
+                params.append(processed_storage_key)
+            if thumbnail_key:
+                updates.append("thumbnail_key = %s")
+                params.append(thumbnail_key)
+            if duration:
+                updates.append("duration = %s")
+                params.append(duration)
+            params.append(video_id)
+            sql = f"UPDATE videos SET {', '.join(updates)} WHERE id = %s"
+            cur.execute(sql, tuple(params))
 
 
 # ---------------------------------------------------------------------------
@@ -502,7 +493,7 @@ def get_videos_by_channel(channel_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id, views
+                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id, views, duration
                 FROM videos
                 WHERE channel_id = %s AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -517,7 +508,7 @@ def get_subscribed_feed(user_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT v.id, v.title, v.description, v.tags, v.course, v.subject, v.status, v.storage_bucket, v.thumbnail_key, v.created_at, v.channel_id, v.views,
+                SELECT v.id, v.title, v.description, v.tags, v.course, v.subject, v.status, v.storage_bucket, v.thumbnail_key, v.created_at, v.channel_id, v.views, v.duration,
                        c.name AS channel_name, c.visibility AS channel_visibility
                 FROM videos v
                 INNER JOIN channel_subscriptions s ON v.channel_id = s.channel_id

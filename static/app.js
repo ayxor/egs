@@ -153,19 +153,6 @@ async function loadProfile() {
   }
 }
 
-function getDeterministicDuration(id) {
-  let hash = 0;
-  const str = String(id);
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  hash = Math.abs(hash);
-  const minutes = (hash % 45) + 3; // 3 to 47 minutes
-  const seconds = hash % 60;
-  const secondsStr = seconds < 10 ? `0${seconds}` : seconds;
-  return `${minutes}:${secondsStr}`;
-}
-
 function mapApiVideos(results = []) {
   return results.map((video, idx) => ({
     id: video.video_id,
@@ -175,7 +162,7 @@ function mapApiVideos(results = []) {
     course: video.channel_name || video.course || "",
     description: video.description || "",
     tags: [...(video.tags || []), "recent"],
-    duration: getDeterministicDuration(video.video_id),
+    duration: video.duration || "0:05",
     views: video.views !== undefined ? `${video.views} views` : "0 views",
     thumbnail_url: video.thumbnail_url,
     accent: idx % 2
