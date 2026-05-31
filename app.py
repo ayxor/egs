@@ -141,6 +141,7 @@ jinja_env = Environment(
 TEMPLATES: dict[str, list[str]] = {
     "welcome":         ["name"],
     "upload_complete": ["name", "title"],
+    "new_video":       ["name", "course", "professor_name", "title"],
 }
 
 
