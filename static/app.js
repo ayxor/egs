@@ -157,11 +157,11 @@ function mapApiVideos(results = []) {
   return results.map((video, idx) => ({
     id: video.video_id,
     title: video.title,
+    subject: video.subject || "",
     professor: video.uploader_name || "Institution Lecturer",
-    course: video.channel_name || video.course || "General Lecture",
-    description: video.description || "No description provided.",
+    course: video.channel_name || video.course || "",
+    description: video.description || "",
     tags: [...(video.tags || []), "recent"],
-    duration: "Lecture",
     views: video.views !== undefined ? `${video.views} views` : "0 views",
     thumbnail_url: video.thumbnail_url,
     accent: idx % 2
@@ -171,7 +171,7 @@ function mapApiVideos(results = []) {
 }
 
 function filteredVideos() {
-  if (state.filter === "classes") {
+  if (state.filter === "classes" || state.filter === "myclasses") {
     return [];
   }
   return state.videos.filter((video) => {
@@ -256,14 +256,13 @@ function renderVideoCards(targetId) {
       .map((video) => `
         <article class="video-card card">
           <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
-            <span class="badge">${escapeHtml(video.subject)}</span>
-            <span class="duration">${escapeHtml(video.duration)}</span>
+            ${video.subject ? `<span class="badge">${escapeHtml(video.subject)}</span>` : ''}
           </a>
           <div class="video-body">
             <h3><a href="/watch/${encodeURIComponent(video.id)}">${escapeHtml(video.title)}</a></h3>
             <div class="video-meta">
               <span>By: <strong>${escapeHtml(video.professor)}</strong></span>
-              <span>Class: <strong>${escapeHtml(video.course)}</strong></span>
+              ${video.course ? `<span>Class: <strong>${escapeHtml(video.course)}</strong></span>` : ''}
               <span>Views: <strong>${escapeHtml(video.views)}</strong></span>
             </div>
           </div>
@@ -274,10 +273,12 @@ function renderVideoCards(targetId) {
 
   // "My Classes" section — subscribed channels
   let myClassesHtml = "";
-  if (state.filter !== "videos" && state.myChannels && state.myChannels.length > 0 && !state.query) {
+  const showMyClasses = (state.filter === "myclasses") || (state.filter !== "videos" && !state.query);
+  if (showMyClasses && state.myChannels && state.myChannels.length > 0) {
+    const heading = state.filter === "myclasses" ? "📚 My Subscribed Classes" : "📚 My Classes";
     myClassesHtml = `
       <div style="grid-column: 1 / -1; margin-bottom: 8px;">
-        <h3 style="font-family: 'Space Grotesk', sans-serif; margin-bottom: 12px; color: var(--text);">📚 My Classes</h3>
+        <h3 style="font-family: 'Space Grotesk', sans-serif; margin-bottom: 12px; color: var(--text);">${heading}</h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
           ${state.myChannels.map(c => `
             <a href="/channel/${c.id}" class="card" style="padding: 16px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; transition: all 0.2s; position: relative;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--line)'">
@@ -291,19 +292,21 @@ function renderVideoCards(targetId) {
             </a>
           `).join("")}
         </div>
-        <hr style="border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px 0;">
+        ${state.filter !== "myclasses" ? '<hr style="border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px 0;">' : ''}
       </div>
     `;
   }
 
   host.innerHTML = myClassesHtml + channelsHtml + videosHtml;
 
-  const hasMyClasses = state.filter !== "videos" && state.myChannels && state.myChannels.length > 0 && !state.query;
+  const hasMyClasses = showMyClasses && state.myChannels && state.myChannels.length > 0;
   const hasChannels = state.filter !== "videos" && state.searchedChannels && state.searchedChannels.length > 0;
   const hasVideos = state.filter !== "classes" && videos.length > 0;
 
   if (!hasMyClasses && !hasChannels && !hasVideos) {
-    if (state.filter === "classes") {
+    if (state.filter === "myclasses") {
+      host.innerHTML = '<article class="card empty">You have not subscribed to any classes yet. Browse the library and join a class!</article>';
+    } else if (state.filter === "classes") {
       host.innerHTML = '<article class="card empty">No course channels matched your search.</article>';
     } else if (state.filter === "videos") {
       host.innerHTML = '<article class="card empty">No lectures matched your search.</article>';
@@ -1312,15 +1315,14 @@ async function bootChannel() {
       videoGrid.innerHTML = mapped.map(video => `
         <article class="video-card card">
           <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
-            <span class="badge">${escapeHtml(video.subject)}</span>
-            <span class="duration">${escapeHtml(video.duration)}</span>
+            ${video.subject ? `<span class="badge">${escapeHtml(video.subject)}</span>` : ''}
           </a>
           <div class="video-body">
             <h3><a href="/watch/${encodeURIComponent(video.id)}">${escapeHtml(video.title)}</a></h3>
-            <p>${escapeHtml(video.description)}</p>
             <div class="video-meta">
               <span>By: <strong>${escapeHtml(video.professor)}</strong></span>
-              <span>Class: <strong>${escapeHtml(video.course)}</strong></span>
+              ${video.course ? `<span>Class: <strong>${escapeHtml(video.course)}</strong></span>` : ''}
+              <span>Views: <strong>${escapeHtml(video.views)}</strong></span>
             </div>
           </div>
         </article>
