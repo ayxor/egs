@@ -16,12 +16,14 @@
     <div id="upload-gate" class="gate-message warn">Sign in as a professor to unlock uploads.</div>
 
     <form id="upload-form" class="form-grid" aria-disabled="true">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="upload-channel-select" style="font-size: 0.82rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;">Target Channel / Class</label>
+        <select name="channel_id" id="upload-channel-select" required>
+          <option value="">-- Loading your channels... --</option>
+        </select>
+      </div>
       <input name="title" type="text" placeholder="Lecture title" required>
       <textarea name="description" rows="5" placeholder="Short lecture description"></textarea>
-      <div class="two-col">
-        <input name="course" type="text" placeholder="Course">
-        <input name="subject" type="text" placeholder="Subject">
-      </div>
       <input name="tags" type="text" placeholder="Comma-separated tags, e.g. vhdl, logic, design">
       <div class="two-col">
         <input type="hidden" name="upload_mode" value="process">

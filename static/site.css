@@ -664,3 +664,164 @@ select {
     min-width: 0;
   }
 }
+
+/* Sidebar and Channels Layout */
+.app-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 32px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+.app-sidebar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar-title {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  color: var(--muted);
+  transition: all 0.2s;
+}
+
+.sidebar-link svg {
+  opacity: 0.7;
+}
+
+.sidebar-link:hover,
+.sidebar-link.active {
+  background: rgba(28, 20, 13, 0.08);
+  color: var(--ink);
+}
+
+.sidebar-link.active svg {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.sidebar-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.sidebar-action-btn:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.sidebar-channels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-channel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background 0.2s, color 0.2s;
+}
+
+.sidebar-channel-item:hover,
+.sidebar-channel-item.active {
+  background: rgba(28, 20, 13, 0.05);
+  color: var(--ink);
+}
+
+.sidebar-channel-item.active {
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+  border-radius: 0 10px 10px 0;
+}
+
+.sidebar-placeholder {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-style: italic;
+  padding: 8px 12px;
+}
+
+/* Badges and visibility indicators */
+.badge-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.badge-pill.public {
+  background: rgba(31, 122, 75, 0.12);
+  color: var(--ok);
+  border: 1px solid rgba(31, 122, 75, 0.2);
+}
+
+.badge-pill.unlisted {
+  background: rgba(28, 20, 13, 0.08);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.badge-pill.private {
+  background: rgba(155, 45, 45, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(155, 45, 45, 0.2);
+}
+
+.channel-layout {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 980px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+}
+

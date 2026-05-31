@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<section class="channel-layout">
+  <div class="channel-banner card" style="padding: 30px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; background: linear-gradient(135deg, rgba(31, 122, 114, 0.08) 0%, rgba(215, 98, 61, 0.08) 100%);">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <p class="eyebrow" id="channel-type-eyebrow">Class Channel</p>
+        <h1 id="channel-name-title" style="font-size: clamp(2rem, 4vw, 3rem); line-height: 1.1; margin-bottom: 8px;">Loading Channel...</h1>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <span id="channel-visibility-badge" class="badge-pill">public</span>
+          <span id="channel-owner-chip" class="session-chip" style="font-size: 0.8rem; padding: 4px 10px;">Lecturer</span>
+          <span id="channel-code-chip" class="session-chip hidden" style="font-size: 0.8rem; padding: 4px 10px; background: rgba(31, 122, 114, 0.1); color: var(--teal);">Code</span>
+        </div>
+      </div>
+      
+      <div id="channel-action-zone">
+        <button id="channel-subscribe-btn" class="button primary hidden">Join Class</button>
+      </div>
+    </div>
+    
+    <p id="channel-desc" class="lead" style="margin: 0; max-width: 800px;">Loading channel details and course overview...</p>
+  </div>
+
+  <section class="section-head compact" style="margin-bottom: 16px;">
+    <div>
+      <p class="eyebrow">Catalog</p>
+      <h2>Lectures & Lab Walks</h2>
+    </div>
+  </section>
+
+  <section class="video-grid" id="channel-video-grid">
+    <article class="card empty">Loading lectures...</article>
+  </section>
+</section>
+
+<script>
+  window.UASTREAM_SELECTED_CHANNEL_ID = {{ selected_channel_id | tojson }};
+</script>
+{% endblock %}

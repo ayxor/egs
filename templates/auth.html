@@ -10,29 +10,20 @@
       </div>
     </div>
 
-    <div class="auth-tabs" style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 1px solid var(--border);">
-      <button data-auth-tab="register" class="active" style="background: none; border: none; padding: 0.75rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500;">Create Account</button>
-      <button data-auth-tab="login" style="background: none; border: none; padding: 0.75rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; opacity: 0.6;">Log In</button>
-    </div>
-
     <div data-auth-panel="register" class="auth-panel">
       <form id="register-form" class="form-grid">
         <input name="email" type="email" placeholder="new-user@ua.pt" required>
         <input name="password" type="password" placeholder="Password" required>
         <input name="name" type="text" placeholder="Full name" required>
-        <div class="two-col">
-          <select name="role">
-            <option value="student">Student</option>
-            <option value="professor">Professor</option>
-          </select>
-          <input name="course" type="text" placeholder="Course">
-        </div>
-        <input name="institution" type="text" placeholder="universidade-aveiro" required>
+        <select name="role" style="margin-bottom: 12px; padding: 10px; width: 100%;">
+          <option value="student">Student</option>
+          <option value="professor">Professor</option>
+        </select>
         <button class="button primary" type="submit">Create Account</button>
 
         <div style="text-align: center; margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
           <span class="muted">Already a user?</span>
-          <a class="button ghost" href="#login" style="width: 100%;">Log in</a>
+          <a class="button ghost" href="/auth/login" style="width: 100%;">Log in</a>
         </div>
       </form>
 
@@ -43,16 +34,10 @@
         </svg>
         <h2 style="margin-bottom: 0.5rem;">Success!</h2>
         <p class="muted" style="margin-bottom: 2rem;">Your account has been created. An email with further details may have been sent to you.</p>
-        <a class="button primary" href="#login" style="width: 100%;">Log In with Keycloak</a>
+        <a class="button primary" href="/auth/login" style="width: 100%;">Log In with Keycloak</a>
       </div>
 
       <p id="auth-status" class="muted" style="margin-top: 1.5rem;">Account creation stays in UAStream, but sign-in happens securely in Keycloak.</p>
-    </div>
-
-    <div data-auth-panel="login" class="auth-panel hidden">
-      <div style="text-align: center;">
-        <p class="muted" style="margin-bottom: 2rem;">Redirecting to secure login...</p>
-      </div>
     </div>
   </article>
 </section>

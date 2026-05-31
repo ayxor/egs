@@ -14,6 +14,27 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Channels (Class channels and Personal channels)
+CREATE TABLE IF NOT EXISTS channels (
+    id                UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name              TEXT        NOT NULL,
+    description       TEXT,
+    owner_id          UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_type      TEXT        NOT NULL CHECK (channel_type IN ('class', 'personal')),
+    visibility        TEXT        NOT NULL CHECK (visibility IN ('public', 'unlisted', 'private')),
+    course_code       TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Channel subscriptions (who belongs to/subscribes to a channel)
+CREATE TABLE IF NOT EXISTS channel_subscriptions (
+    user_id           UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel_id        UUID        NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    subscribed_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, channel_id)
+);
+
 -- Videos (metadata; binary data lives in Object Storage)
 CREATE TABLE IF NOT EXISTS videos (
     id                      UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -30,10 +51,15 @@ CREATE TABLE IF NOT EXISTS videos (
     thumbnail_key           TEXT,
     status                  TEXT        NOT NULL DEFAULT 'uploaded'
                                         CHECK (status IN ('uploading','uploaded','processing','ready','failed')),
+    channel_id              UUID        REFERENCES channels(id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at              TIMESTAMPTZ
 );
+
+-- Migration for existing databases
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_id UUID REFERENCES channels(id) ON DELETE SET NULL;
+
 
 -- Processing jobs (tracks Video Editor jobs)
 CREATE TABLE IF NOT EXISTS processing_jobs (
@@ -57,6 +83,11 @@ CREATE INDEX IF NOT EXISTS idx_videos_uploader    ON videos(uploader_id);
 CREATE INDEX IF NOT EXISTS idx_videos_deleted     ON videos(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_video         ON processing_jobs(video_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_external      ON processing_jobs(external_job_id);
+CREATE INDEX IF NOT EXISTS idx_channels_owner     ON channels(owner_id);
+CREATE INDEX IF NOT EXISTS idx_channels_visibility ON channels(visibility);
+CREATE INDEX IF NOT EXISTS idx_videos_channel     ON videos(channel_id);
+CREATE INDEX IF NOT EXISTS idx_subs_user          ON channel_subscriptions(user_id);
+
 
 -- Static seed data synced with Keycloak realm-egs.json
 INSERT INTO users (keycloak_user_id, email, name, role, institution)

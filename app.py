@@ -360,7 +360,10 @@ def auth_refresh():
 def register_user():
     """Register a new user (Keycloak + local DB + welcome email)."""
     body = request.get_json(force=True) or {}
-    for field in ("email", "password", "name", "role", "institution"):
+    institution = body.get("institution") or "universidade-aveiro"
+    course = body.get("course") or None
+
+    for field in ("email", "password", "name", "role"):
         if not body.get(field):
             return jsonify({"error": f"missing required field: {field}"}), 400
 
@@ -380,11 +383,12 @@ def register_user():
 
     # 2) Create user in Keycloak
     kc_status, kc_result = auth.create_keycloak_user(
-        service_token,
-        body["email"],
-        body["password"],
-        body["role"],
-        body["institution"],
+        service_token=service_token,
+        email=body["email"],
+        password=body["password"],
+        name=body["name"],
+        role=body["role"],
+        institution=institution,
     )
     if kc_status == 409:
         return jsonify({"error": "user already exists"}), 409
@@ -400,8 +404,8 @@ def register_user():
         email=body["email"],
         name=body["name"],
         role=body["role"],
-        institution=body["institution"],
-        course=body.get("course"),
+        institution=institution,
+        course=course,
     )
 
     # 4) Send welcome email (fire-and-forget)
@@ -445,6 +449,254 @@ def get_me():
 
 
 # ---------------------------------------------------------------------------
+# Channels & Subscriptions
+# ---------------------------------------------------------------------------
+
+@app.route("/channels", methods=["POST"])
+def create_channel_endpoint():
+    """Create a new channel (professor only)."""
+    payload, err = _professor_required()
+    if err:
+        return err
+
+    body = request.get_json(force=True) or {}
+    name = body.get("name")
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    channel_type = body.get("channel_type", "class")
+    if channel_type not in ("class", "personal"):
+        return jsonify({"error": "channel_type must be 'class' or 'personal'"}), 400
+
+    visibility = body.get("visibility", "public")
+    if visibility not in ("public", "unlisted", "private"):
+        return jsonify({"error": "visibility must be 'public', 'unlisted', or 'private'"}), 400
+
+    description = body.get("description", "")
+    course_code = body.get("course_code")
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.create_channel(
+        owner_id=user["id"],
+        name=name,
+        description=description,
+        channel_type=channel_type,
+        visibility=visibility,
+        course_code=course_code,
+    )
+
+    # Automatically subscribe the creator to their own channel
+    db.subscribe_to_channel(user["id"], channel["id"])
+
+    return jsonify(channel), 201
+
+
+@app.route("/channels/<channel_id>", methods=["PUT", "PATCH"])
+def update_channel_endpoint(channel_id):
+    """Update channel metadata (professor/owner only)."""
+    if not _UUID_RE.match(channel_id):
+        return jsonify({"error": "channel not found"}), 404
+
+    payload, err = _professor_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return jsonify({"error": "channel not found"}), 404
+
+    # Enforce ownership check
+    if str(channel["owner_id"]) != str(user["id"]):
+        return jsonify({"error": "forbidden - only the owner can edit the channel"}), 403
+
+    body = request.get_json(force=True) or {}
+    name = body.get("name", channel["name"])
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    visibility = body.get("visibility", channel["visibility"])
+    if visibility not in ("public", "unlisted", "private"):
+        return jsonify({"error": "visibility must be 'public', 'unlisted', or 'private'"}), 400
+
+    description = body.get("description", channel["description"])
+    course_code = body.get("course_code", channel["course_code"])
+
+    db.update_channel(
+        channel_id=channel_id,
+        name=name,
+        description=description,
+        visibility=visibility,
+        course_code=course_code,
+    )
+
+    return "", 204
+
+
+@app.route("/channels", methods=["GET"])
+def list_channels_endpoint():
+    """List channels visible to the user."""
+    payload, err = _jwt_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channels = db.get_channels(user_id=user["id"])
+    return jsonify({"results": channels}), 200
+
+
+@app.route("/channels/<channel_id>", methods=["GET"])
+def get_channel_endpoint(channel_id):
+    """Get channel details and associated videos."""
+    if not _UUID_RE.match(channel_id):
+        return jsonify({"error": "channel not found"}), 404
+
+    payload, err = _jwt_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return jsonify({"error": "channel not found"}), 404
+
+    # Visibility checks
+    visibility = channel["visibility"]
+    if visibility == "private":
+        is_owner = str(channel["owner_id"]) == str(user["id"])
+        is_sub = db.is_subscribed(user["id"], channel_id)
+        if not is_owner and not is_sub:
+            return jsonify({"error": "forbidden - private channel access restricted"}), 403
+
+    videos = db.get_videos_by_channel(channel_id)
+    return jsonify({
+        "channel": channel,
+        "is_subscribed": db.is_subscribed(user["id"], channel_id),
+        "results": [
+            {
+                "video_id": str(v["id"]),
+                "title": v["title"],
+                "description": v["description"],
+                "tags": v["tags"] or [],
+                "course": v["course"],
+                "subject": v["subject"],
+                "status": v["status"],
+                "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
+                "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+            }
+            for v in videos
+        ]
+    }), 200
+
+
+@app.route("/channels/<channel_id>/subscribe", methods=["POST"])
+def subscribe_channel_endpoint(channel_id):
+    """Subscribe or unsubscribe to a channel."""
+    if not _UUID_RE.match(channel_id):
+        return jsonify({"error": "channel not found"}), 404
+
+    payload, err = _jwt_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return jsonify({"error": "channel not found"}), 404
+
+    body = request.get_json(force=True) or {}
+    action = body.get("action", "subscribe")
+
+    if action == "subscribe":
+        db.subscribe_to_channel(user["id"], channel_id)
+        return jsonify({"message": "subscribed successfully"}), 200
+    elif action == "unsubscribe":
+        db.unsubscribe_from_channel(user["id"], channel_id)
+        return jsonify({"message": "unsubscribed successfully"}), 200
+    else:
+        return jsonify({"error": "action must be 'subscribe' or 'unsubscribe'"}), 400
+
+
+@app.route("/channel/<channel_id>", methods=["GET"])
+def channel_page(channel_id):
+    """Channel landing page template."""
+    return render_template(
+        "channel.html",
+        page_title="Channel · UAStream",
+        page_name="channel",
+        selected_channel_id=channel_id,
+        downstream_services={
+            "iam": config.KEYCLOAK_URL,
+            "object_storage": config.OBJECT_STORAGE_URL,
+            "video_editor": config.VIDEO_EDITOR_URL,
+            "notifications": config.NOTIFICATIONS_URL,
+            "database": config.DATABASE_URL,
+        },
+    )
+
+
+@app.route("/users/me/subscriptions", methods=["GET"])
+def get_my_subscriptions():
+    """List current user's subscribed channels."""
+    payload, err = _jwt_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    subs = db.get_user_subscriptions(user["id"])
+    return jsonify({"results": subs}), 200
+
+
+@app.route("/videos/subscribed", methods=["GET"])
+def list_subscribed_videos():
+    """Get a feed of latest videos from subscribed channels."""
+    payload, err = _jwt_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    results = db.get_subscribed_feed(user["id"])
+    return jsonify({
+        "results": [
+            {
+                "video_id": str(v["id"]),
+                "title": v["title"],
+                "description": v["description"],
+                "tags": v["tags"] or [],
+                "course": v["course"],
+                "subject": v["subject"],
+                "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
+                "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+                "channel_id": str(v["channel_id"]) if v.get("channel_id") else None,
+                "channel_name": v.get("channel_name"),
+            }
+            for v in results
+        ]
+    }), 200
+
+
+# ---------------------------------------------------------------------------
 # Videos
 # ---------------------------------------------------------------------------
 
@@ -461,18 +713,23 @@ def _parse_tags():
     return tags
 
 
-def _notify_students(title, course, institution, uploader_name):
-    if not course:
+def _notify_students(title, channel_id, uploader_name):
+    if not channel_id:
         return
-    students = db.get_students_by_course(institution, course)
-    for student in students:
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return
+    channel_name = channel["name"]
+
+    subscribers = db.get_channel_subscribers(channel_id)
+    for sub in subscribers:
         services.send_email(
-            to=student["email"],
-            subject=f"Novo vídeo de {course}: {title}",
+            to=sub["email"],
+            subject=f"Novo vídeo em {channel_name}: {title}",
             template="new_video",
             data={
-                "name": student["name"],
-                "course": course,
+                "name": sub["name"],
+                "course": channel_name,
                 "professor_name": uploader_name,
                 "title": title
             },
@@ -497,6 +754,9 @@ def upload_video_endpoint():
     tags = _parse_tags()
     course = request.form.get("course", "")
     subject = request.form.get("subject", "")
+    channel_id = request.form.get("channel_id") or None
+    if channel_id == "null" or channel_id == "":
+        channel_id = None
 
     user = db.get_user_by_keycloak_id(payload["user_id"])
     if not user:
@@ -528,6 +788,7 @@ def upload_video_endpoint():
         storage_bucket=bucket,
         raw_storage_key=raw_key,
         status="uploaded",
+        channel_id=channel_id,
     )
 
     # 4) Notification (fire-and-forget)
@@ -537,7 +798,7 @@ def upload_video_endpoint():
         template="upload_complete",
         data={"name": user["name"], "title": title},
     )
-    _notify_students(title, course, institution, user["name"])
+    _notify_students(title, channel_id, user["name"])
 
     return jsonify({"video_id": str(video["id"])}), 201
 
@@ -571,6 +832,9 @@ def upload_video_with_processing():
     tags = _parse_tags()
     course = request.form.get("course", "")
     subject = request.form.get("subject", "")
+    channel_id = request.form.get("channel_id") or None
+    if channel_id == "null" or channel_id == "":
+        channel_id = None
 
     user = db.get_user_by_keycloak_id(payload["user_id"])
     if not user:
@@ -607,6 +871,7 @@ def upload_video_with_processing():
         storage_bucket=bucket,
         raw_storage_key=raw_key,
         status="processing",
+        channel_id=channel_id,
     )
     video_id = str(video["id"])
 
@@ -675,7 +940,7 @@ def upload_video_with_processing():
                         template="upload_complete",
                         data={"name": user["name"], "title": title},
                     )
-                    _notify_students(title, course, institution, user["name"])
+                    _notify_students(title, channel_id, user["name"])
                     return
                 elif status == "failed":
                     db.update_video_status(video_id, "failed")
@@ -751,17 +1016,20 @@ def update_video_endpoint(video_id):
     course = body.get("course", video["course"])
     subject = body.get("subject", video["subject"])
     tags = body.get("tags", video["tags"])
+    channel_id = body.get("channel_id") or video.get("channel_id")
+    if channel_id == "null" or channel_id == "":
+        channel_id = None
     
     if isinstance(tags, str):
         tags = [t.strip() for t in tags.split(",") if t.strip()]
 
-    db.update_video(video_id, title, description, tags, course, subject)
+    db.update_video(video_id, title, description, tags, course, subject, channel_id=channel_id)
     return "", 204
 
 
 @app.route("/videos", methods=["GET"])
 def list_videos_endpoint():
-    """List / search videos scoped to the authenticated user's institution."""
+    """List / search videos scoped by channel visibility."""
     payload, err = _jwt_required()
     if err:
         return err
@@ -780,13 +1048,19 @@ def list_videos_endpoint():
         return jsonify({"error": "limit and offset must be integers"}), 400
 
     total, results = db.search_videos(
-        institution=user["institution"],
+        user_id=user["id"],
         q=q,
         course=course,
         subject=subject,
         limit=limit,
         offset=offset,
     )
+
+    matching_channels = []
+    if q:
+        matching_channels = db.search_public_channels(q, limit=100)
+    else:
+        matching_channels = db.get_channels(user_id=None)
 
     return jsonify({
         "total": total,
@@ -803,9 +1077,23 @@ def list_videos_endpoint():
                 "uploader_id": str(v["uploader_id"]),
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+                "channel_id": str(v["channel_id"]) if v.get("channel_id") else None,
+                "channel_name": v.get("channel_name"),
+                "uploader_name": v.get("uploader_name"),
             }
             for v in results
         ],
+        "channels": [
+            {
+                "id": str(c["id"]),
+                "name": c["name"],
+                "description": c["description"],
+                "course_code": c["course_code"],
+                "owner_name": c["owner_name"],
+                "visibility": c["visibility"],
+            }
+            for c in matching_channels
+        ]
     }), 200
 
 
@@ -827,8 +1115,18 @@ def get_video_endpoint(video_id):
     if not video:
         print("VIDEOupload_page NOT FOUND"); return jsonify({"error": "video not found"}), 404
 
-    if video["institution"] != user["institution"]:
-        print("FORBIDDEN"); return jsonify({"error": "forbidden"}), 403
+    # Enforce channel visibility rules
+    channel_id = video.get("channel_id")
+    if channel_id:
+        visibility = video.get("channel_visibility")
+        owner_id = video.get("channel_owner_id")
+        
+        if visibility == "private":
+            is_owner = str(owner_id) == str(user["id"])
+            is_sub = db.is_subscribed(user["id"], channel_id)
+            if not is_owner and not is_sub:
+                print("FORBIDDEN - PRIVATE CHANNEL ACCESS RESTRICTED")
+                return jsonify({"error": "forbidden - private channel access restricted"}), 403
 
     # Prefer the processed version if available
     storage_key = video["processed_storage_key"] or video["raw_storage_key"]
@@ -856,7 +1154,10 @@ def get_video_endpoint(video_id):
         "thumbnail_url": f"/internal/storage/{quote(video['storage_bucket'])}/{video['thumbnail_key']}" if video.get("thumbnail_key") else None,
         "created_at": video["created_at"].isoformat() if video["created_at"] else None,
         "stream_url": stream_url,
+        "channel_id": str(channel_id) if channel_id else None,
+        "channel_name": video.get("channel_name"),
     }), 200
+
 
 
 @app.route("/videos/<video_id>", methods=["DELETE"])

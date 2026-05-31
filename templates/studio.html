@@ -1,49 +1,116 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<section class="section-head">
+<section class="section-head" style="margin-bottom: 24px;">
   <div>
-    <p class="eyebrow">Studio</p>
-    <h1>My Videos</h1>
+    <p class="eyebrow">Lecturer Studio</p>
+    <h1>Creator Studio</h1>
   </div>
 </section>
 
 <div id="studio-gate" class="gate-message warn hidden">Sign in as a professor to access the studio.</div>
 
-<div class="studio-layout hidden" id="studio-content">
-  <div class="card" style="padding: 0;">
-    <table class="studio-table" style="width: 100%; border-collapse: collapse;">
-      <thead>
-        <tr>
-          <th style="text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border);">Title</th>
-          <th style="text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border);">Course</th>
-          <th style="padding: 12px 16px; border-bottom: 1px solid var(--border);">Status</th>
-          <th style="text-align: right; padding: 12px 16px; border-bottom: 1px solid var(--border);">Actions</th>
-        </tr>
-      </thead>
-      <tbody id="studio-video-list">
-        <tr><td colspan="4" style="padding: 24px; text-align: center;">Loading your videos...</td></tr>
-      </tbody>
-    </table>
+<div class="studio-content-wrap hidden" id="studio-content" style="display: flex; flex-direction: column; gap: 32px;">
+  
+  <!-- Channels Section on Top -->
+  <div>
+    <div class="section-head compact" style="margin-bottom: 16px;">
+      <div>
+        <p class="eyebrow">Step 1</p>
+        <h2>Select Channel / Class</h2>
+      </div>
+      <button class="button primary" onclick="openCreateChannelModal()" style="font-size: 0.9rem; padding: 8px 16px;">➕ Create Course Channel</button>
+    </div>
+    
+    <div id="studio-channels-grid" class="video-grid">
+      <!-- Populate owned channels dynamically -->
+      <article class="card empty">Loading your course channels...</article>
+    </div>
+  </div>
+
+  <!-- Videos Inside Selected Channel Section Below -->
+  <div id="studio-videos-wrapper" class="hidden">
+    <div class="section-head compact" style="margin-bottom: 16px;">
+      <div>
+        <p class="eyebrow">Step 2</p>
+        <h2 id="selected-channel-header">Lectures in Channel</h2>
+      </div>
+      <span class="tag" id="selected-channel-visibility-pill">public</span>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow);">
+      <table class="studio-table" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="background: rgba(28, 20, 13, 0.03);">
+            <th style="text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Lecture Title</th>
+            <th style="padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Status</th>
+            <th style="text-align: right; padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="studio-video-list">
+          <tr><td colspan="3" style="padding: 24px; text-align: center;">Select a channel above to load videos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  
+  <!-- Empty State Placeholder when no channel selected -->
+  <div id="studio-videos-placeholder" class="card empty" style="padding: 40px; border: 1px dashed var(--line);">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--muted); margin-bottom: 12px;">
+      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+    <h3>No Channel Selected</h3>
+    <p class="muted" style="margin-top: 4px;">Click on one of your course channels above to manage its lectures and metadata.</p>
+  </div>
+
+</div>
+
+<!-- Edit Video Modal -->
+<div id="edit-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+  <div class="card" style="width: min(500px, 95vw); padding: 24px; box-shadow: var(--shadow);">
+    <h2 style="font-family: 'Space Grotesk', sans-serif;">Edit Lecture Details</h2>
+    <form id="edit-form" class="form-grid" style="margin-top: 16px;">
+      <input type="hidden" name="video_id" id="edit-video-id">
+      
+      <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
+        <label for="edit-channel-select" style="font-size: 0.82rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;">Move to Channel</label>
+        <select name="channel_id" id="edit-channel-select" style="padding: 10px;">
+          <option value="">-- No Channel --</option>
+        </select>
+      </div>
+
+      <input name="title" id="edit-title" type="text" placeholder="Lecture title" required style="margin-bottom: 12px;">
+      <textarea name="description" id="edit-description" rows="3" placeholder="Short description" style="margin-bottom: 12px;"></textarea>
+      <input name="tags" id="edit-tags" type="text" placeholder="Comma-separated tags" style="margin-bottom: 16px;">
+      
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button type="button" class="button" onclick="closeEditModal()">Cancel</button>
+        <button type="submit" class="button primary">Save Changes</button>
+      </div>
+    </form>
   </div>
 </div>
 
-<!-- Edit Modal -->
-<div id="edit-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center;">
-  <div class="card" style="width: 100%; max-width: 500px; padding: 24px;">
-    <h2>Edit Video</h2>
-    <form id="edit-form" class="form-grid" style="margin-top: 16px;">
-      <input type="hidden" name="video_id" id="edit-video-id">
-      <input name="title" id="edit-title" type="text" placeholder="Lecture title" required>
-      <textarea name="description" id="edit-description" rows="3" placeholder="Short description"></textarea>
-      <div class="two-col">
-        <input name="course" id="edit-course" type="text" placeholder="Course">
-        <input name="subject" id="edit-subject" type="text" placeholder="Subject">
+<!-- Edit Channel Modal -->
+<div id="channel-edit-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 101; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+  <div class="card" style="width: min(500px, 95vw); padding: 24px; box-shadow: var(--shadow);">
+    <h2 style="font-family: 'Space Grotesk', sans-serif;">Edit Course Channel</h2>
+    <form id="edit-channel-form" class="form-grid" style="margin-top: 16px;">
+      <input type="hidden" id="edit-channel-id">
+      <input name="name" id="edit-channel-name" type="text" placeholder="Class name" required style="margin-bottom: 12px;">
+      <textarea name="description" id="edit-channel-description" rows="3" placeholder="Short course description" style="margin-bottom: 12px;"></textarea>
+      <div class="two-col" style="margin-bottom: 16px;">
+        <input name="course_code" id="edit-channel-code" type="text" placeholder="Course Code">
+        <select name="visibility" id="edit-channel-visibility">
+          <option value="public">🌐 Public (Searchable)</option>
+          <option value="unlisted">🔗 Unlisted (Link access)</option>
+          <option value="private">🔒 Private (Subscribers only)</option>
+        </select>
       </div>
-      <input name="tags" id="edit-tags" type="text" placeholder="Comma-separated tags">
       
-      <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;">
-        <button type="button" class="button" onclick="closeEditModal()">Cancel</button>
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button type="button" class="button" onclick="closeEditChannelModal()">Cancel</button>
         <button type="submit" class="button primary">Save Changes</button>
       </div>
     </form>

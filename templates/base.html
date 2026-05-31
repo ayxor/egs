@@ -52,6 +52,30 @@
     {% block content %}{% endblock %}
   </main>
 
+  <!-- Create Channel Modal -->
+  <div id="channel-create-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 101; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div class="card" style="width: min(500px, 95vw); padding: 24px; box-shadow: var(--shadow);">
+      <h2 style="font-family: 'Space Grotesk', sans-serif;">Create Course Channel</h2>
+      <form id="create-channel-form" class="form-grid" style="margin-top: 16px;">
+        <input name="name" id="new-channel-name" type="text" placeholder="Class name, e.g. Distributed Systems" required style="margin-bottom: 12px;">
+        <textarea name="description" id="new-channel-description" rows="3" placeholder="Short course description" style="margin-bottom: 12px;"></textarea>
+        <div class="two-col" style="margin-bottom: 16px;">
+          <input name="course_code" id="new-channel-code" type="text" placeholder="Course Code, e.g. LEI-310">
+          <select name="visibility" id="new-channel-visibility">
+            <option value="public">🌐 Public (Searchable)</option>
+            <option value="unlisted">🔗 Unlisted (Link access)</option>
+            <option value="private">🔒 Private (Subscribers only)</option>
+          </select>
+        </div>
+        
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button type="button" class="button" onclick="closeCreateChannelModal()">Cancel</button>
+          <button type="submit" class="button primary">Create Channel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="toast-stack" id="toast-stack"></div>
 
   <script>
