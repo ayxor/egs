@@ -35,7 +35,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_requests_total{service=\"object-storage@docker\"}[1m])) by (method, code)", "legendFormat": "{{method}} ({{code}})", "refId": "A" }
+        { "expr": "sum(rate(http_requests_total{app=\"object-storage\"}[1m])) by (method, status)", "legendFormat": "{{method}} ({{status}})", "refId": "A" }
       ],
       "title": "Storage Request Throughput (RED - Rate)",
       "type": "timeseries"
@@ -62,7 +62,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(increase(traefik_service_requests_total{service=\"object-storage@docker\", code=~\"[45]..\"}[1m])) by (code)", "legendFormat": "HTTP {{code}}", "refId": "A" }
+        { "expr": "sum(increase(http_requests_total{app=\"object-storage\", status=~\"[45]..\"}[1m])) by (status)", "legendFormat": "HTTP {{status}}", "refId": "A" }
       ],
       "title": "Storage Access Failures (RED - Errors)",
       "type": "timeseries"
@@ -89,7 +89,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_request_duration_seconds_sum{service=\"object-storage@docker\"}[1m])) by (method) / sum(rate(traefik_service_requests_total{service=\"object-storage@docker\"}[1m])) by (method)", "legendFormat": "Method: {{method}}", "refId": "A" }
+        { "expr": "sum(rate(http_request_duration_seconds_sum{app=\"object-storage\"}[1m])) by (method) / sum(rate(http_request_duration_seconds_count{app=\"object-storage\"}[1m])) by (method)", "legendFormat": "Method: {{method}}", "refId": "A" }
       ],
       "title": "Storage Average Access Latency (RED - Duration)",
       "type": "timeseries"

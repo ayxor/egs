@@ -18,6 +18,7 @@ spec:
       containers:
         - name: object-storage
           image: registry.deti/tenant-grupo8-egs-deti-ua-pt/object-storage:v1
+          imagePullPolicy: Always
           env:
             - name: OBJECT_STORAGE_API_KEY
               valueFrom:

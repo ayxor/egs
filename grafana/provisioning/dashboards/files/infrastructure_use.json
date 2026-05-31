@@ -10,7 +10,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 1,
-      "title": "CONTAINER RUNTIME INFRASTRUCTURE METRICS (USE MODEL)",
+      "title": "KUBERNETES POD RUNTIME INFRASTRUCTURE METRICS (USE MODEL)",
       "type": "row"
     },
     {
@@ -21,7 +21,8 @@
           "custom": {
             "axisPlacement": "left",
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2
           },
@@ -35,9 +36,9 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"main\"}[1m])) by (container_label_com_docker_compose_service) * 100", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }
+        { "expr": "sum(kube_pod_cpu_usage_cores) by (app) * 100", "legendFormat": "{{app}} CPU Usage", "refId": "A" }
       ],
-      "title": "Container CPU Utilization (USE - Utilization)",
+      "title": "Pod CPU Core Utilization (USE - Utilization)",
       "type": "timeseries"
     },
     {
@@ -48,7 +49,8 @@
           "custom": {
             "axisPlacement": "left",
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2
           },
@@ -62,10 +64,74 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(container_memory_working_set_bytes{container_label_com_docker_compose_project=\"main\"}) by (container_label_com_docker_compose_service)", "legendFormat": "{{container_label_com_docker_compose_service}}", "refId": "A" }
+        { "expr": "sum(kube_pod_memory_usage_bytes) by (app)", "legendFormat": "{{app}} Memory", "refId": "A" }
       ],
-      "title": "Container Memory Working Set (USE - Utilization)",
+      "title": "Pod Memory Working Set (USE - Utilization)",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2.0 },
+              { "color": "red", "value": 4.0 }
+            ]
+          },
+          "unit": "cores"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value"
+      },
+      "targets": [
+        { "expr": "sum(kube_pod_cpu_usage_cores)", "legendFormat": "Total Namespace CPU Cores", "refId": "A" }
+      ],
+      "title": "Total Namespace CPU Cores (USE - Saturation)",
+      "type": "gauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1500000000 },
+              { "color": "red", "value": 3000000000 }
+            ]
+          },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value"
+      },
+      "targets": [
+        { "expr": "sum(kube_pod_memory_usage_bytes)", "legendFormat": "Total Namespace Memory", "refId": "A" }
+      ],
+      "title": "Total Namespace Memory Allocation (USE - Errors)",
+      "type": "gauge"
     },
     {
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -76,22 +142,23 @@
             "axisPlacement": "left",
             "drawStyle": "line",
             "fillOpacity": 10,
+            "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2
           },
           "unit": "s"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
-      "id": 4,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 6,
       "options": {
-        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["max"], "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{container_label_com_docker_compose_project=\"main\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "Throttle: {{container_label_com_docker_compose_service}}", "refId": "A" }
+        { "expr": "kube_pod_uptime_seconds", "legendFormat": "{{pod}}", "refId": "A" }
       ],
-      "title": "CPU Cgroup Throttling (USE - Saturation)",
+      "title": "Pod Uptime Tracking (USE - Saturation)",
       "type": "timeseries"
     },
     {
@@ -102,23 +169,25 @@
           "custom": {
             "axisPlacement": "left",
             "drawStyle": "line",
-            "fillOpacity": 10,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2
           },
-          "unit": "short"
+          "unit": "decbytes"
         }
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
-      "id": 5,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 7,
       "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" },
+        "legend": { "calcs": ["last"], "displayMode": "table", "placement": "bottom" },
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(container_network_transmit_errors_total{container_label_com_docker_compose_project=\"main\"}[1m])) by (container_label_com_docker_compose_service)", "legendFormat": "Errors: {{container_label_com_docker_compose_service}}", "refId": "A" }
+        { "expr": "object_storage_used_bytes", "legendFormat": "Storage Data Size", "refId": "A" },
+        { "expr": "object_storage_fs_free_bytes", "legendFormat": "FileSystem Free Space", "refId": "B" }
       ],
-      "title": "Container Network Tx/Rx Errors (USE - Errors)",
+      "title": "Object Storage Volume Usage (USE - Saturation)",
       "type": "timeseries"
     }
   ],

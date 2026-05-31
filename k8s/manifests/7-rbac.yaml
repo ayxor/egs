@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: default-sa-metrics-reader
+  namespace: tenant-grupo8-egs-deti-ua-pt
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: default-sa-metrics-reader-binding
+  namespace: tenant-grupo8-egs-deti-ua-pt
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: tenant-grupo8-egs-deti-ua-pt
+roleRef:
+  kind: Role
+  name: default-sa-metrics-reader
+  apiGroup: rbac.authorization.k8s.io

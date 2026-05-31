@@ -39,7 +39,7 @@
         "textMode": "name"
       },
       "targets": [
-        { "expr": "up{job=\"traefik\"}", "legendFormat": "Traefik Ingress", "refId": "A" }
+        { "expr": "up{job=\"composer\"}", "legendFormat": "Ingress Gateway", "refId": "A" }
       ],
       "title": "Ingress Health",
       "type": "stat"
@@ -129,7 +129,7 @@
         "textMode": "name"
       },
       "targets": [
-        { "expr": "sum(up{instance=~\"keycloak.*\"}) or vector(0)", "legendFormat": "Keycloak", "refId": "A" }
+        { "expr": "sum(up{job=\"keycloak\"}) or vector(0)", "legendFormat": "Keycloak", "refId": "A" }
       ],
       "title": "IAM Health",
       "type": "stat"
@@ -221,7 +221,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_requests_total[1m])) by (service)", "legendFormat": "Service: {{service}}", "refId": "A" }
+        { "expr": "sum(rate(http_requests_total[1m])) by (app)", "legendFormat": "Service: {{app}}", "refId": "A" }
       ],
       "title": "Overall Service Request Rates (RED - Rate)",
       "type": "timeseries"
@@ -248,7 +248,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(increase(traefik_service_requests_total{code=~\"[45]..\"}[1m])) by (service, code)", "legendFormat": "Service: {{service}} (Code {{code}})", "refId": "A" }
+        { "expr": "sum(increase(http_requests_total{status=~\"[45]..\"}[1m])) by (app, status)", "legendFormat": "Service: {{app}} (Code {{status}})", "refId": "A" }
       ],
       "title": "Platform Error Hotspots (RED - Errors)",
       "type": "timeseries"

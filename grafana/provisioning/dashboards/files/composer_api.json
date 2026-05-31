@@ -35,7 +35,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_requests_total{service=\"composer@docker\"}[1m])) by (method, code)", "legendFormat": "{{method}} ({{code}})", "refId": "A" }
+        { "expr": "sum(rate(http_requests_total{app=\"composer\"}[1m])) by (method, status)", "legendFormat": "{{method}} ({{status}})", "refId": "A" }
       ],
       "title": "Composer Request Rates (RED - Rate)",
       "type": "timeseries"
@@ -62,7 +62,7 @@
         "tooltip": { "mode": "single" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_requests_total{service=\"composer@docker\", code=~\"[45]..\"}[1m])) / sum(rate(traefik_service_requests_total{service=\"composer@docker\"}[1m])) * 100 or vector(0)", "legendFormat": "Global Error Ratio", "refId": "A" }
+        { "expr": "sum(rate(http_requests_total{app=\"composer\", status=~\"[45]..\"}[1m])) / sum(rate(http_requests_total{app=\"composer\"}[1m])) * 100 or vector(0)", "legendFormat": "Global Error Ratio", "refId": "A" }
       ],
       "title": "Composer Error Rates (RED - Errors)",
       "type": "timeseries"
@@ -89,7 +89,7 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_request_duration_seconds_sum{service=\"composer@docker\"}[1m])) by (method) / sum(rate(traefik_service_requests_total{service=\"composer@docker\"}[1m])) by (method)", "legendFormat": "Method: {{method}}", "refId": "A" }
+        { "expr": "sum(rate(http_request_duration_seconds_sum{app=\"composer\"}[1m])) by (method) / sum(rate(http_request_duration_seconds_count{app=\"composer\"}[1m])) by (method)", "legendFormat": "Method: {{method}}", "refId": "A" }
       ],
       "title": "Composer Average Request Duration (RED - Duration)",
       "type": "timeseries"
