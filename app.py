@@ -417,8 +417,42 @@ def get_template(path: TemplatePath):
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# Metrics & Observability Implementation
 # ---------------------------------------------------------------------------
+import time
+import threading
+import re
+from collections import defaultdict
+
+_metrics_lock = threading.Lock()
+_http_requests_total = defaultdict(int)
+_http_request_duration_seconds = defaultdict(float)
+
+@app.before_request
+def before_request_metrics():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request_metrics(response):
+    if request.method == "OPTIONS":
+        return response
+        
+    duration = 0.0
+    if hasattr(request, 'start_time'):
+        duration = time.time() - request.start_time
+    
+    path = request.path
+    path = re.sub(r'/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '/<uuid>', path)
+    
+    method = request.method
+    status = str(response.status_code)
+    
+    with _metrics_lock:
+        _http_requests_total[(method, path, status)] += 1
+        _http_request_duration_seconds[(method, path)] += duration
+        
+    return response
+
 
 @app.get("/metrics")
 def get_metrics():
@@ -434,6 +468,18 @@ def get_metrics():
         f"notifications_emails_total{{status=\"opened\"}} {opened}",
         f"notifications_emails_total{{status=\"failed\"}} {failed}",
     ]
+    
+    with _metrics_lock:
+        for (method, path, status), count in _http_requests_total.items():
+            metrics.append(f'http_requests_total{{app="notifications",method="{method}",path="{path}",status="{status}"}} {count}')
+        for (method, path), total_duration in _http_request_duration_seconds.items():
+            metrics.append(f'http_request_duration_seconds_sum{{app="notifications",method="{method}",path="{path}"}} {total_duration:.6f}')
+            count_for_dur = sum(
+                cnt for (m, p, s), cnt in _http_requests_total.items()
+                if m == method and p == path
+            )
+            metrics.append(f'http_request_duration_seconds_count{{app="notifications",method="{method}",path="{path}"}} {count_for_dur}')
+            
     return Response("\n".join(metrics) + "\n", mimetype="text/plain")
 
 if __name__ == "__main__":
