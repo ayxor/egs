@@ -167,7 +167,7 @@ def get_service_token():
 # User management (Admin REST API)
 # ---------------------------------------------------------------------------
 
-def create_keycloak_user(service_token, email, password, name, role, institution):
+def create_keycloak_user(service_token, email, password, first_name, last_name, role, institution):
     """Create a new user in Keycloak.
 
     Returns (http_status, keycloak_user_id_or_error_body).
@@ -176,9 +176,6 @@ def create_keycloak_user(service_token, email, password, name, role, institution
     url = (
         f"{config.KEYCLOAK_URL}/admin/realms/{config.KEYCLOAK_REALM}/users"
     )
-    parts = (name or "").strip().split(" ", 1)
-    first_name = parts[0] if parts else ""
-    last_name = parts[1] if len(parts) > 1 else ""
 
     body = {
         "username": email,

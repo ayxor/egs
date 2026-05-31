@@ -363,12 +363,16 @@ def register_user():
     institution = body.get("institution") or "universidade-aveiro"
     course = body.get("course") or None
 
-    for field in ("email", "password", "name", "role"):
+    for field in ("email", "password", "first_name", "last_name", "role"):
         if not body.get(field):
             return jsonify({"error": f"missing required field: {field}"}), 400
 
     if body["role"] not in ("professor", "student"):
         return jsonify({"error": "role must be 'professor' or 'student'"}), 400
+
+    first_name = body["first_name"].strip()
+    last_name = body["last_name"].strip()
+    name = f"{first_name} {last_name}"
 
     # Duplicate check
     if db.get_user_by_email(body["email"]):
@@ -386,7 +390,8 @@ def register_user():
         service_token=service_token,
         email=body["email"],
         password=body["password"],
-        name=body["name"],
+        first_name=first_name,
+        last_name=last_name,
         role=body["role"],
         institution=institution,
     )
@@ -402,7 +407,7 @@ def register_user():
     user = db.create_user(
         keycloak_user_id=keycloak_user_id,
         email=body["email"],
-        name=body["name"],
+        name=name,
         role=body["role"],
         institution=institution,
         course=course,
@@ -413,7 +418,7 @@ def register_user():
         to=body["email"],
         subject="Bem-vindo ao UAStream",
         template="welcome",
-        data={"name": body["name"]},
+        data={"name": name},
     )
 
     return jsonify({"user_id": str(user["id"])}), 201

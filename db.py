@@ -192,10 +192,10 @@ def search_videos(user_id=None, q=None, course=None, subject=None,
 
             if q:
                 conditions.append(
-                    "(videos.title ILIKE %s OR videos.description ILIKE %s OR %s = ANY(videos.tags) OR c.name ILIKE %s OR c.course_code ILIKE %s)"
+                    "(videos.title ILIKE %s OR videos.description ILIKE %s OR %s = ANY(videos.tags) OR c.name ILIKE %s OR c.course_code ILIKE %s OR u.name ILIKE %s)"
                 )
                 like_pattern = f"%{q}%"
-                params.extend([like_pattern, like_pattern, q, like_pattern, like_pattern])
+                params.extend([like_pattern, like_pattern, q, like_pattern, like_pattern, like_pattern])
 
             if course:
                 conditions.append("videos.course = %s")
@@ -212,6 +212,7 @@ def search_videos(user_id=None, q=None, course=None, subject=None,
                 SELECT COUNT(*) AS total 
                 FROM videos 
                 LEFT JOIN channels c ON videos.channel_id = c.id
+                LEFT JOIN users u ON videos.uploader_id = u.id
                 WHERE {where}
                 """,
                 params,
@@ -246,15 +247,15 @@ def search_public_channels(q, limit=5):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT c.id, c.name, c.description, c.course_code, c.owner_id,
+                SELECT c.id, c.name, c.description, c.course_code, c.owner_id, c.visibility,
                        u.name AS owner_name
                 FROM channels c
                 JOIN users u ON c.owner_id = u.id
-                WHERE c.visibility = 'public' AND (c.name ILIKE %s OR c.description ILIKE %s OR c.course_code ILIKE %s)
+                WHERE c.visibility = 'public' AND (c.name ILIKE %s OR c.description ILIKE %s OR c.course_code ILIKE %s OR u.name ILIKE %s)
                 ORDER BY c.name ASC
                 LIMIT %s
                 """,
-                (f"%{q}%", f"%{q}%", f"%{q}%", limit),
+                (f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%", limit),
             )
             return cur.fetchall()
 
