@@ -185,6 +185,7 @@ function filteredVideos() {
 
 async function loadVideos() {
   state.searchedChannels = []; // Reset searched channels on every load
+  state.myChannels = []; // Reset subscribed channels
   if (!state.token) {
     state.videos = [];
     return;
@@ -204,6 +205,17 @@ async function loadVideos() {
   } catch {
     state.videos = [];
     notify("Live catalog unavailable. Showing demo feed.", "warn");
+  }
+
+  // Fetch user's subscribed channels for "My Classes" section
+  try {
+    const subsData = await requestJson("/users/me/subscriptions", {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    state.myChannels = subsData.results || [];
+  } catch (e) {
+    console.error("[UAStream] Failed to load subscribed channels:", e);
+    state.myChannels = [];
   }
 }
 
@@ -260,12 +272,37 @@ function renderVideoCards(targetId) {
       .join("");
   }
 
-  host.innerHTML = channelsHtml + videosHtml;
+  // "My Classes" section — subscribed channels
+  let myClassesHtml = "";
+  if (state.filter !== "videos" && state.myChannels && state.myChannels.length > 0 && !state.query) {
+    myClassesHtml = `
+      <div style="grid-column: 1 / -1; margin-bottom: 8px;">
+        <h3 style="font-family: 'Space Grotesk', sans-serif; margin-bottom: 12px; color: var(--text);">📚 My Classes</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;">
+          ${state.myChannels.map(c => `
+            <a href="/channel/${c.id}" class="card" style="padding: 16px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; transition: all 0.2s; position: relative;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--line)'">
+              <span class="badge-pill ${c.visibility || 'public'}" style="position: absolute; top: 12px; right: 12px; font-size: 0.65rem; padding: 2px 6px;">
+                ${(c.visibility || 'public') === 'private' ? '🔒 Private' : (c.visibility || 'public') === 'unlisted' ? '🔗 Unlisted' : '🌐 Public'}
+              </span>
+              <p class="eyebrow" style="margin: 0; font-size: 0.72rem;">${escapeHtml(c.course_code || 'Class Channel')}</p>
+              <h4 style="margin: 4px 0 2px 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; color: var(--text);">${escapeHtml(c.name)}</h4>
+              <p class="muted" style="font-size: 0.82rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; height: 34px;">${escapeHtml(c.description || 'No class description.')}</p>
+              <div style="margin-top: 8px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px;">Lecturer: <strong style="color: var(--text);">${escapeHtml(c.owner_name || 'Institution Lecturer')}</strong></div>
+            </a>
+          `).join("")}
+        </div>
+        <hr style="border: 0; border-top: 1px solid var(--line); margin: 24px 0 16px 0;">
+      </div>
+    `;
+  }
 
+  host.innerHTML = myClassesHtml + channelsHtml + videosHtml;
+
+  const hasMyClasses = state.filter !== "videos" && state.myChannels && state.myChannels.length > 0 && !state.query;
   const hasChannels = state.filter !== "videos" && state.searchedChannels && state.searchedChannels.length > 0;
   const hasVideos = state.filter !== "classes" && videos.length > 0;
 
-  if (!hasChannels && !hasVideos) {
+  if (!hasMyClasses && !hasChannels && !hasVideos) {
     if (state.filter === "classes") {
       host.innerHTML = '<article class="card empty">No course channels matched your search.</article>';
     } else if (state.filter === "videos") {
@@ -274,7 +311,7 @@ function renderVideoCards(targetId) {
       host.innerHTML = '<article class="card empty">No videos or channels matched your search.</article>';
     }
   } else if (!hasVideos && state.filter === "all") {
-    host.innerHTML = channelsHtml + '<article class="card empty" style="grid-column: 1 / -1;">No matching videos found in this catalog.</article>';
+    host.innerHTML = myClassesHtml + channelsHtml + '<article class="card empty" style="grid-column: 1 / -1;">No matching videos found in this catalog.</article>';
   }
 }
 
@@ -1447,7 +1484,7 @@ window.copyChannelLink = function() {
   const url = `${window.location.origin}/channel/${channelId}`;
   const btn = document.getElementById("copy-channel-link-btn");
 
-  navigator.clipboard.writeText(url).then(() => {
+  function onSuccess() {
     if (btn) {
       const original = btn.textContent;
       btn.textContent = "✓ Copied!";
@@ -1462,16 +1499,29 @@ window.copyChannelLink = function() {
       }, 2000);
     }
     notify("Channel link copied to clipboard!", "success");
-  }).catch(() => {
-    // Fallback for older browsers
-    const input = document.createElement("input");
-    input.value = url;
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand("copy");
-    document.body.removeChild(input);
-    notify("Channel link copied to clipboard!", "success");
-  });
+  }
+
+  function fallbackCopy() {
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      onSuccess();
+    } catch (e) {
+      notify("Failed to copy link. URL: " + url, "error");
+    }
+    document.body.removeChild(ta);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(onSuccess).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
 };
 
 
