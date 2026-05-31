@@ -544,6 +544,32 @@ def update_channel_endpoint(channel_id):
     return "", 204
 
 
+@app.route("/channels/<channel_id>", methods=["DELETE"])
+def delete_channel_endpoint(channel_id):
+    """Delete a channel and all its videos (owner only)."""
+    if not _UUID_RE.match(channel_id):
+        return jsonify({"error": "channel not found"}), 404
+
+    payload, err = _professor_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return jsonify({"error": "channel not found"}), 404
+
+    # Enforce ownership check
+    if str(channel["owner_id"]) != str(user["id"]):
+        return jsonify({"error": "forbidden - only the owner can delete the channel"}), 403
+
+    db.delete_channel(channel_id)
+    return "", 204
+
+
 @app.route("/channels", methods=["GET"])
 def list_channels_endpoint():
     """List channels visible to the user."""

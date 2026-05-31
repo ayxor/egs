@@ -947,6 +947,7 @@ async function loadStudioChannels() {
           <div style="display: flex; gap: 6px; align-items: center;">
             ${c.course_code ? `<span class="tag" style="margin:0; font-size: 0.72rem; padding: 2px 8px; background: rgba(31,122,114,0.08);">${escapeHtml(c.course_code)}</span>` : ''}
             <button class="button small ghost" style="padding: 2px 8px; font-size: 0.75rem; margin: 0;" onclick="event.stopPropagation(); triggerEditChannel(this)">Edit</button>
+            <button class="button small ghost" style="padding: 2px 8px; font-size: 0.75rem; margin: 0; border-color: rgba(220,53,69,0.2); color: #dc3545;" onmouseover="this.style.background='rgba(220,53,69,0.05)'" onmouseout="this.style.background='transparent'" onclick="event.stopPropagation(); triggerDeleteChannel(this)">Delete</button>
           </div>
         </div>
         <h3 style="margin-top: 4px; font-family: 'Space Grotesk', sans-serif;">${escapeHtml(c.name)}</h3>
@@ -1221,6 +1222,43 @@ window.triggerEditChannel = function(btnEl) {
   const code = card.getAttribute('data-course-code');
   const visibility = card.getAttribute('data-visibility');
   openEditChannelModal(id, name, description, code, visibility);
+};
+
+window.triggerDeleteChannel = async function(btnEl) {
+  const card = btnEl.closest('.channel-select-card');
+  if (!card) return;
+  const id = card.getAttribute('data-id');
+  const name = card.getAttribute('data-name');
+  
+  const ok = confirm(`Are you absolutely sure you want to delete the class channel "${name}"?\nThis will ALSO permanently delete all lectures uploaded to this class!`);
+  if (!ok) return;
+
+  btnEl.disabled = true;
+  btnEl.textContent = "Deleting...";
+
+  try {
+    await requestJson(`/channels/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${state.token}`
+      }
+    });
+
+    notify("Class and all associated videos deleted successfully!", "success");
+    
+    // Clear active selection if the deleted channel was selected
+    if (window.selectedStudioChannelId === id) {
+      window.selectedStudioChannelId = null;
+    }
+
+    await populateChannelSelects();
+    await loadStudioChannels();
+  } catch (err) {
+    notify(err.message, "error");
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = "Delete";
+  }
 };
 
 window.openEditChannelModal = function(id, name, description, code, visibility) {

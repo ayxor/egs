@@ -535,3 +535,23 @@ def get_channel_subscribers(channel_id):
             )
             return cur.fetchall()
 
+
+def delete_channel(channel_id):
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            # 1) Soft-delete all videos belonging to this channel
+            cur.execute(
+                "UPDATE videos SET deleted_at = NOW(), updated_at = NOW() WHERE channel_id = %s",
+                (channel_id,),
+            )
+            # 2) Delete the channel subscription entries
+            cur.execute(
+                "DELETE FROM channel_subscriptions WHERE channel_id = %s",
+                (channel_id,),
+            )
+            # 3) Hard-delete the channel itself
+            cur.execute(
+                "DELETE FROM channels WHERE id = %s",
+                (channel_id,),
+            )
+
