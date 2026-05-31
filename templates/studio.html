@@ -143,6 +143,16 @@
       </table>
     </div>
     
+    <!-- Add Member Section -->
+    <div id="add-member-section" class="hidden" style="margin-bottom: 16px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: rgba(31, 122, 114, 0.03);">
+      <label style="font-size: 0.82rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 8px;">Add Member by Email</label>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="email" id="add-member-email" placeholder="student@ua.pt" style="flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.9rem; background: var(--surface); color: var(--fg);">
+        <button id="add-member-btn" class="button primary" type="button" style="padding: 8px 16px; margin: 0; font-size: 0.85rem; white-space: nowrap;" onclick="addMemberByEmail()">Add</button>
+      </div>
+      <div id="add-member-status" style="margin-top: 8px; font-size: 0.82rem; min-height: 1.2em;"></div>
+    </div>
+    
     <div style="display: flex; justify-content: flex-end;">
       <button class="button primary" onclick="closeSubscribersModal()">Close</button>
     </div>

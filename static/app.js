@@ -1055,13 +1055,16 @@ function setupCreateChannelForm() {
     btn.disabled = true;
     btn.textContent = "Creating...";
 
+    const visSelect = document.getElementById("new-channel-visibility");
     const body = {
       name: document.getElementById("new-channel-name").value.trim(),
       description: document.getElementById("new-channel-description").value.trim(),
       course_code: document.getElementById("new-channel-code").value.trim(),
-      visibility: document.getElementById("new-channel-visibility").value,
+      visibility: visSelect ? visSelect.value : "public",
       channel_type: "class"
     };
+
+    console.log("[UAStream] Creating channel with visibility:", body.visibility, body);
 
     try {
       const channel = await requestJson("/channels", {
@@ -1073,12 +1076,18 @@ function setupCreateChannelForm() {
         body: JSON.stringify(body)
       });
 
+      console.log("[UAStream] Channel created:", channel);
       notify("Class Channel created successfully!", "success");
       closeCreateChannelModal();
       form.reset();
       
       // Refresh channels selector populators and view
-      await populateChannelSelects();
+      try {
+        await populateChannelSelects();
+      } catch (e) {
+        console.error("[UAStream] Error populating selects after create:", e);
+      }
+
       if (page === "studio") {
         await loadStudioChannels();
         selectStudioChannel(channel.id, channel.name, channel.visibility);
@@ -1086,7 +1095,9 @@ function setupCreateChannelForm() {
         window.location.href = `/channel/${channel.id}`;
       }
     } catch (err) {
+      console.error("[UAStream] Channel creation failed:", err);
       notify(err.message, "error");
+    } finally {
       btn.disabled = false;
       btn.textContent = "Create Channel";
     }
@@ -1324,14 +1335,36 @@ window.showChannelSubscribers = async function() {
   const tbody = document.getElementById("subscribers-list-tbody");
   if (!modal || !tbody) return;
 
+  // Show the add-member form
+  const addMemberSection = document.getElementById("add-member-section");
+  if (addMemberSection) addMemberSection.classList.remove("hidden");
+
+  // Clear previous add-member status
+  const addStatus = document.getElementById("add-member-status");
+  if (addStatus) { addStatus.textContent = ""; addStatus.className = ""; }
+  const addInput = document.getElementById("add-member-email");
+  if (addInput) addInput.value = "";
+
   tbody.innerHTML = '<tr><td colspan="2" style="padding: 20px; text-align: center;">Loading subscribers...</td></tr>';
   modal.style.display = "flex";
+
+  await refreshSubscribersList(channelId, tbody);
+};
+
+async function refreshSubscribersList(channelId, tbody) {
+  if (!tbody) tbody = document.getElementById("subscribers-list-tbody");
+  if (!channelId) channelId = window.selectedStudioChannelId;
+  if (!tbody || !channelId) return;
 
   try {
     const res = await requestJson(`/channels/${channelId}/subscribers`, {
       headers: { Authorization: `Bearer ${state.token}` },
     });
     const subs = res.results || [];
+
+    // Update the modal title with count
+    const modalTitle = document.getElementById("subscribers-modal-title");
+    if (modalTitle) modalTitle.textContent = `Subscribed Students (${subs.length})`;
 
     if (subs.length === 0) {
       tbody.innerHTML = '<tr><td colspan="2" style="padding: 20px; text-align: center;" class="muted">No subscribers yet for this class channel.</td></tr>';
@@ -1348,6 +1381,47 @@ window.showChannelSubscribers = async function() {
   } catch (err) {
     console.error(err);
     tbody.innerHTML = `<tr><td colspan="2" style="padding: 20px; text-align: center; color: var(--error);">Error loading subscribers: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+window.addMemberByEmail = async function() {
+  const channelId = window.selectedStudioChannelId;
+  if (!channelId) return;
+
+  const input = document.getElementById("add-member-email");
+  const statusEl = document.getElementById("add-member-status");
+  const btn = document.getElementById("add-member-btn");
+  const email = input ? input.value.trim() : "";
+
+  if (!email) {
+    if (statusEl) { statusEl.textContent = "Please enter an email address."; statusEl.className = "add-member-error"; }
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = "Adding..."; }
+  if (statusEl) { statusEl.textContent = ""; statusEl.className = ""; }
+
+  try {
+    await requestJson(`/channels/${channelId}/add-member`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${state.token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email: email })
+    });
+
+    if (statusEl) { statusEl.textContent = `✓ ${email} added successfully!`; statusEl.className = "add-member-success"; }
+    if (input) input.value = "";
+
+    // Refresh subscribers list
+    await refreshSubscribersList(channelId);
+
+  } catch (err) {
+    console.error("[UAStream] Add member failed:", err);
+    if (statusEl) { statusEl.textContent = err.message; statusEl.className = "add-member-error"; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Add"; }
   }
 };
 

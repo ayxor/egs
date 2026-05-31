@@ -640,6 +640,45 @@ def get_channel_subscribers_endpoint(channel_id):
     }), 200
 
 
+@app.route("/channels/<channel_id>/add-member", methods=["POST"])
+def add_member_to_channel_endpoint(channel_id):
+    """Add a user to a channel by email. Restricted to the channel owner (professor)."""
+    if not _UUID_RE.match(channel_id):
+        return jsonify({"error": "channel not found"}), 404
+
+    payload, err = _professor_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return jsonify({"error": "channel not found"}), 404
+
+    # Restrict strictly to channel owner
+    if str(channel["owner_id"]) != str(user["id"]):
+        return jsonify({"error": "forbidden - only the channel owner can add members"}), 403
+
+    body = request.get_json(force=True) or {}
+    email = body.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"error": "email is required"}), 400
+
+    target_user = db.get_user_by_email(email)
+    if not target_user:
+        return jsonify({"error": f"No registered user found with email '{email}'"}), 404
+
+    # Check if already subscribed
+    if db.is_subscribed(target_user["id"], channel_id):
+        return jsonify({"error": f"'{email}' is already a member of this channel"}), 409
+
+    db.subscribe_to_channel(target_user["id"], channel_id)
+    return jsonify({"message": f"'{email}' has been added to the channel successfully"}), 200
+
+
 @app.route("/channels/<channel_id>/subscribe", methods=["POST"])
 def subscribe_channel_endpoint(channel_id):
     """Subscribe or unsubscribe to a channel."""

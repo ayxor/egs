@@ -825,3 +825,14 @@ select {
   }
 }
 
+/* Add-member status feedback */
+.add-member-success {
+  color: var(--ok, #1f7a4e);
+  font-weight: 600;
+}
+
+.add-member-error {
+  color: var(--danger, #c53030);
+  font-weight: 500;
+}
+
