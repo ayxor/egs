@@ -913,6 +913,16 @@ window.selectStudioChannel = function(elOrId, optName, optVisibility) {
     pill.textContent = visibility;
   }
 
+  // Show/hide copy link button for unlisted channels
+  const copyLinkBtn = document.getElementById("copy-channel-link-btn");
+  if (copyLinkBtn) {
+    if (visibility === "unlisted") {
+      copyLinkBtn.classList.remove("hidden");
+    } else {
+      copyLinkBtn.classList.add("hidden");
+    }
+  }
+
   // Fetch lectures for this channel
   loadStudioChannelVideos(id);
 };
@@ -1428,6 +1438,40 @@ window.addMemberByEmail = async function() {
 window.closeSubscribersModal = function() {
   const modal = document.getElementById("subscribers-modal");
   if (modal) modal.style.display = "none";
+};
+
+window.copyChannelLink = function() {
+  const channelId = window.selectedStudioChannelId;
+  if (!channelId) return;
+
+  const url = `${window.location.origin}/channel/${channelId}`;
+  const btn = document.getElementById("copy-channel-link-btn");
+
+  navigator.clipboard.writeText(url).then(() => {
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = "✓ Copied!";
+      btn.style.background = "rgba(31, 122, 75, 0.12)";
+      btn.style.color = "var(--ok)";
+      btn.style.borderColor = "rgba(31, 122, 75, 0.3)";
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.style.background = "rgba(28,20,13,0.06)";
+        btn.style.color = "var(--muted)";
+        btn.style.borderColor = "var(--line)";
+      }, 2000);
+    }
+    notify("Channel link copied to clipboard!", "success");
+  }).catch(() => {
+    // Fallback for older browsers
+    const input = document.createElement("input");
+    input.value = url;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand("copy");
+    document.body.removeChild(input);
+    notify("Channel link copied to clipboard!", "success");
+  });
 };
 
 
