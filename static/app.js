@@ -815,13 +815,30 @@ async function bootHomeOrLibrary() {
     const grid = document.getElementById("video-grid");
     if (grid) grid.innerHTML = "";
     
-    // Also remove the "Trending Lectures" section on home page if not logged in
     if (page === "home") {
-        const trendingTitle = document.querySelector(".section-head");
-        if (trendingTitle) trendingTitle.style.display = "none";
+        const videosSection = document.getElementById("videos-section");
+        if (videosSection) videosSection.style.display = "none";
+        
+        const welcomeBanner = document.querySelector(".welcome-banner");
+        if (welcomeBanner) welcomeBanner.style.display = "none";
+        
+        const guestLanding = document.getElementById("guest-landing-section");
+        if (guestLanding) guestLanding.style.display = "flex";
     }
     return;
   }
+  
+  if (page === "home") {
+      const guestLanding = document.getElementById("guest-landing-section");
+      if (guestLanding) guestLanding.style.display = "none";
+      
+      const welcomeBanner = document.querySelector(".welcome-banner");
+      if (welcomeBanner) welcomeBanner.style.display = "flex";
+      
+      const videosSection = document.getElementById("videos-section");
+      if (videosSection) videosSection.style.display = "block";
+  }
+  
   await loadVideos();
   renderVideoCards("video-grid");
   setupFilters();
