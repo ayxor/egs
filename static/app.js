@@ -153,6 +153,19 @@ async function loadProfile() {
   }
 }
 
+function getDeterministicDuration(id) {
+  let hash = 0;
+  const str = String(id);
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  hash = Math.abs(hash);
+  const minutes = (hash % 45) + 3; // 3 to 47 minutes
+  const seconds = hash % 60;
+  const secondsStr = seconds < 10 ? `0${seconds}` : seconds;
+  return `${minutes}:${secondsStr}`;
+}
+
 function mapApiVideos(results = []) {
   return results.map((video, idx) => ({
     id: video.video_id,
@@ -162,6 +175,7 @@ function mapApiVideos(results = []) {
     course: video.channel_name || video.course || "",
     description: video.description || "",
     tags: [...(video.tags || []), "recent"],
+    duration: getDeterministicDuration(video.video_id),
     views: video.views !== undefined ? `${video.views} views` : "0 views",
     thumbnail_url: video.thumbnail_url,
     accent: idx % 2
@@ -225,8 +239,64 @@ function renderVideoCards(targetId) {
     return;
   }
 
+  if (page === "home") {
+    // -------------------------------------------------------------
+    // Home Page Layout Rendering
+    // -------------------------------------------------------------
+    const myClassesGrid = document.getElementById("my-classes-grid");
+    const myClassesSection = document.getElementById("my-subscribed-classes-section");
+
+    if (myClassesSection && myClassesGrid) {
+      if (state.myChannels && state.myChannels.length > 0) {
+        myClassesSection.style.display = "block";
+        myClassesGrid.innerHTML = state.myChannels.map(c => `
+          <a href="/channel/${c.id}" class="card" style="padding: 16px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: inherit; transition: all 0.2s; position: relative;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--line)'">
+            <span class="badge-pill ${c.visibility || 'public'}" style="position: absolute; top: 12px; right: 12px; font-size: 0.65rem; padding: 2px 6px;">
+              ${(c.visibility || 'public') === 'private' ? '🔒 Private' : (c.visibility || 'public') === 'unlisted' ? '🔗 Unlisted' : '🌐 Public'}
+            </span>
+            <p class="eyebrow" style="margin: 0; font-size: 0.72rem;">${escapeHtml(c.course_code || 'Class Channel')}</p>
+            <h4 style="margin: 4px 0 2px 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.1rem; color: var(--text);">${escapeHtml(c.name)}</h4>
+            <p class="muted" style="font-size: 0.82rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; height: 34px;">${escapeHtml(c.description || 'No class description.')}</p>
+            <div style="margin-top: 8px; font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px;">Lecturer: <strong style="color: var(--text);">${escapeHtml(c.owner_name || 'Institution Lecturer')}</strong></div>
+          </a>
+        `).join("");
+      } else {
+        myClassesSection.style.display = "none";
+        myClassesGrid.innerHTML = "";
+      }
+    }
+
+    const videos = filteredVideos();
+    const videosHtml = videos.map((video) => `
+      <article class="video-card card">
+        <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
+          ${video.subject ? `<span class="badge">${escapeHtml(video.subject)}</span>` : ''}
+          <span class="duration">${escapeHtml(video.duration)}</span>
+        </a>
+        <div class="video-body">
+          <h3><a href="/watch/${encodeURIComponent(video.id)}">${escapeHtml(video.title)}</a></h3>
+          <div class="video-meta">
+            <span>By: <strong>${escapeHtml(video.professor)}</strong></span>
+            ${video.course ? `<span>Class: <strong>${escapeHtml(video.course)}</strong></span>` : ''}
+            <span>Views: <strong>${escapeHtml(video.views)}</strong></span>
+          </div>
+        </div>
+      </article>
+    `).join("");
+
+    host.innerHTML = videosHtml;
+
+    if (videos.length === 0) {
+      host.innerHTML = '<article class="card empty">No trending lectures found.</article>';
+    }
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // Library Page / Default Grid Rendering
+  // -------------------------------------------------------------
   let channelsHtml = "";
-  if (state.filter !== "videos" && state.searchedChannels && state.searchedChannels.length > 0) {
+  if (state.filter !== "videos" && state.filter !== "myclasses" && state.searchedChannels && state.searchedChannels.length > 0) {
     const heading = state.query ? "Matched Channels" : "Course Channels";
     channelsHtml = `
       <div style="grid-column: 1 / -1; margin-bottom: 8px;">
@@ -251,12 +321,13 @@ function renderVideoCards(targetId) {
 
   const videos = filteredVideos();
   let videosHtml = "";
-  if (state.filter !== "classes") {
+  if (state.filter !== "classes" && state.filter !== "myclasses") {
     videosHtml = videos
       .map((video) => `
         <article class="video-card card">
           <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
             ${video.subject ? `<span class="badge">${escapeHtml(video.subject)}</span>` : ''}
+            <span class="duration">${escapeHtml(video.duration)}</span>
           </a>
           <div class="video-body">
             <h3><a href="/watch/${encodeURIComponent(video.id)}">${escapeHtml(video.title)}</a></h3>
@@ -300,8 +371,8 @@ function renderVideoCards(targetId) {
   host.innerHTML = myClassesHtml + channelsHtml + videosHtml;
 
   const hasMyClasses = showMyClasses && state.myChannels && state.myChannels.length > 0;
-  const hasChannels = state.filter !== "videos" && state.searchedChannels && state.searchedChannels.length > 0;
-  const hasVideos = state.filter !== "classes" && videos.length > 0;
+  const hasChannels = state.filter !== "videos" && state.filter !== "myclasses" && state.searchedChannels && state.searchedChannels.length > 0;
+  const hasVideos = state.filter !== "classes" && state.filter !== "myclasses" && videos.length > 0;
 
   if (!hasMyClasses && !hasChannels && !hasVideos) {
     if (state.filter === "myclasses") {
@@ -1316,6 +1387,7 @@ async function bootChannel() {
         <article class="video-card card">
           <a class="video-thumb" href="/watch/${encodeURIComponent(video.id)}" style="background: ${video.thumbnail_url ? `url('${video.thumbnail_url}') center/cover no-repeat, ` : ''}${video.accent}; border: 1px solid var(--border);">
             ${video.subject ? `<span class="badge">${escapeHtml(video.subject)}</span>` : ''}
+            <span class="duration">${escapeHtml(video.duration)}</span>
           </a>
           <div class="video-body">
             <h3><a href="/watch/${encodeURIComponent(video.id)}">${escapeHtml(video.title)}</a></h3>

@@ -1,36 +1,27 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<section class="hero">
-  <div>
-    <p class="eyebrow">University Video Platform</p>
-    <h1>Publish lectures. Reach every student.</h1>
-    <p class="lead">
-      UAStream is built for academic classes, practical lessons, and institutional channels.
-      Professors publish content and students watch it in a clean, familiar streaming experience.
-    </p>
-    <div class="hero-actions">
-      <a class="button primary" href="/library">Start Watching</a>
-      <a class="button ghost" href="/library">Open Library</a>
+<div class="home-container" style="max-width: 1200px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 32px;">
+  <!-- My Subscribed Classes Section -->
+  <section id="my-subscribed-classes-section" style="display: none;">
+    <div class="section-head" style="margin-bottom: 16px;">
+      <div>
+        <p class="eyebrow">Your Channels</p>
+        <h2>My Subscribed Classes</h2>
+      </div>
     </div>
-  </div>
-  <aside class="hero-side card">
-    <h3>Featured Today</h3>
-    <p>Discover the latest lectures from your institution and continue learning without switching platforms.</p>
-    <div class="pill-row">
-      <span class="tag">Academic feed</span>
-      <span class="tag">Course channels</span>
-      <span class="tag">Secure access</span>
+    <div class="video-grid" id="my-classes-grid"></div>
+  </section>
+
+  <!-- Videos Section -->
+  <section id="videos-section">
+    <div class="section-head" style="margin-bottom: 16px;">
+      <div>
+        <p class="eyebrow">Discover</p>
+        <h2>Trending Lectures</h2>
+      </div>
     </div>
-  </aside>
-</section>
-
-<section class="section-head">
-  <div>
-    <p class="eyebrow">Discover</p>
-    <h2>Trending Lectures</h2>
-  </div>
-</section>
-
-<section class="video-grid" id="video-grid"></section>
+    <div class="video-grid" id="video-grid"></div>
+  </section>
+</div>
 {% endblock %}
