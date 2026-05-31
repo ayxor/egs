@@ -287,3 +287,8 @@ hr {
   border-top: 1px solid var(--line);
   margin: 16px 0;
 }
+
+/* --- Hide Keycloak's default info block (removes empty grey box) --- */
+#kc-info {
+  display: none !important;
+}
