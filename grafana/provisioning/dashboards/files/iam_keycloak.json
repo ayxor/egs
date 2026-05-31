@@ -25,7 +25,7 @@
             "lineInterpolation": "smooth",
             "lineWidth": 2
           },
-          "unit": "reqps"
+          "unit": "ops"
         }
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
@@ -35,9 +35,13 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_requests_total{service=\"keycloak@docker\"}[1m])) by (code, method)", "legendFormat": "Method: {{method}} (Code {{code}})", "refId": "A" }
+        {
+          "expr": "sum(rate(keycloak_credentials_password_hashing_validations_total[1m])) by (realm, outcome)",
+          "legendFormat": "Outcome: {{outcome}} (Realm: {{realm}})",
+          "refId": "A"
+        }
       ],
-      "title": "Auth Flows & Token Request Throughput (RED - Rate)",
+      "title": "Successful Login Attempts & Token Rates",
       "type": "timeseries"
     },
     {
@@ -52,7 +56,7 @@
             "lineInterpolation": "smooth",
             "lineWidth": 2
           },
-          "unit": "s"
+          "unit": "short"
         }
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
@@ -62,9 +66,167 @@
         "tooltip": { "mode": "multi" }
       },
       "targets": [
-        { "expr": "sum(rate(traefik_service_request_duration_seconds_sum{service=\"keycloak@docker\"}[1m])) by (method) / sum(rate(traefik_service_requests_total{service=\"keycloak@docker\"}[1m])) by (method)", "legendFormat": "Method: {{method}}", "refId": "A" }
+        {
+          "expr": "agroal_active_count{datasource=\"default\"}",
+          "legendFormat": "Active Connections",
+          "refId": "A"
+        },
+        {
+          "expr": "agroal_available_count{datasource=\"default\"}",
+          "legendFormat": "Available Connections",
+          "refId": "B"
+        },
+        {
+          "expr": "agroal_max_used_count{datasource=\"default\"}",
+          "legendFormat": "Max Used Connections",
+          "refId": "C"
+        },
+        {
+          "expr": "agroal_awaiting_count{datasource=\"default\"}",
+          "legendFormat": "Awaiting Connections",
+          "refId": "D"
+        }
       ],
-      "title": "Authentication Flow Latencies (RED - Duration)",
+      "title": "Database Connection Pool Status (Agroal)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "left",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2
+          },
+          "unit": "ms"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "agroal_creation_time_average_milliseconds{datasource=\"default\"}",
+          "legendFormat": "Avg Connection Creation Time",
+          "refId": "A"
+        },
+        {
+          "expr": "agroal_blocking_time_average_milliseconds{datasource=\"default\"}",
+          "legendFormat": "Avg Thread Blocking Time",
+          "refId": "B"
+        }
+      ],
+      "title": "Database Connection Creation & Thread Blocking Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "left",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 5,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(vendor_statistics_hits) by (cache) / (sum(vendor_statistics_hits) by (cache) + sum(vendor_statistics_misses) by (cache)) * 100",
+          "legendFormat": "Hit Ratio: {{cache}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Infinispan Cache Hit Ratio",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "left",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "id": 6,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "process_cpu_usage * 100",
+          "legendFormat": "CPU Usage",
+          "refId": "A"
+        }
+      ],
+      "title": "Keycloak Service CPU Utilization",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "left",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2
+          },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})",
+          "legendFormat": "Used Heap",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(jvm_memory_committed_bytes{area=\"heap\"})",
+          "legendFormat": "Committed Heap",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(jvm_memory_max_bytes{area=\"heap\"})",
+          "legendFormat": "Max Heap",
+          "refId": "C"
+        }
+      ],
+      "title": "Keycloak Service Memory Utilization (Heap)",
       "type": "timeseries"
     }
   ],
