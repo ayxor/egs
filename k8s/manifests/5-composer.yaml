@@ -25,6 +25,7 @@ spec:
       containers:
         - name: composer
           image: registry.deti/tenant-grupo8-egs-deti-ua-pt/composer:v1
+          imagePullPolicy: Always
           env:
             - name: DATABASE_URL
               value: postgresql://composer:composer@db:5432/composer

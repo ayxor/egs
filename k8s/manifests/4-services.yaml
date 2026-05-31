@@ -114,6 +114,7 @@ spec:
       containers:
         - name: notifications
           image: registry.deti/tenant-grupo8-egs-deti-ua-pt/notifications:v1
+          imagePullPolicy: Always
           env:
             - name: NOTIFICATIONS_API_KEY
               valueFrom:

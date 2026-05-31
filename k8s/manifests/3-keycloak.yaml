@@ -192,34 +192,348 @@ data:
     role=Institution Role
     institution=Academic Institution
   uastream.css: |
-    /* Custom CSS styled and themed for the UAStream login experience */
-    body {
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%) !important;
-      color: #f8fafc !important;
-      font-family: 'Outfit', 'Inter', sans-serif !important;
+    /* ============================================================
+       UAStream – Keycloak login theme
+       Targets PatternFly v3/v4 (pf-c-*) classes used by Keycloak.
+       Design tokens match static/site.css exactly.
+       ============================================================ */
+    
+    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&family=Space+Grotesk:wght@700&display=swap");
+    
+    /* --- Design tokens ---------------------------------------- */
+    :root {
+      --bg:            #f5efe4;
+      --surface:       rgba(255, 251, 244, 0.95);
+      --ink:           #1c140d;
+      --muted:         #6a5e50;
+      --line:          rgba(28, 20, 13, 0.12);
+      --accent:        #d7623d;
+      --teal:          #1f7a72;
+      --danger:        #9b2d2d;
+      --shadow:        0 20px 52px rgba(70, 43, 26, 0.16);
     }
+    
+    /* --- Reset ------------------------------------------------- */
+    *, *::before, *::after { box-sizing: border-box; min-width: 0; }
+    
+    /* --- Page background (matches site body exactly) ---------- */
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      font-family: "Manrope", sans-serif;
+      font-size: 16px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 10%, rgba(215, 98, 61, 0.24), transparent 26%),
+        radial-gradient(circle at 88% 16%, rgba(31, 122, 114, 0.20), transparent 24%),
+        linear-gradient(180deg, #fffaf3 0%, #efe5d5 100%) !important;
+      overflow-x: hidden;
+    }
+    
+    /* Dot-grid overlay */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.18;
+      background-image: radial-gradient(rgba(28, 20, 13, 0.09) 0.7px, transparent 0.7px);
+      background-size: 18px 18px;
+      z-index: 0;
+    }
+    
+    /* --- Page layout ------------------------------------------ */
+    .login-pf-page {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      min-height: 100vh !important;
+      padding: 32px 16px !important;
+      position: relative;
+      z-index: 1;
+      background: transparent !important;
+      background-image: none !important;
+    }
+    
+    /* --- Header above the card (realm name) ------------------- */
+    #kc-header {
+      width: min(480px, 100%);
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    
+    #kc-header-wrapper {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--ink);
+      letter-spacing: 0.01em;
+    }
+    
+    #kc-header::before {
+      content: "UA";
+      display: inline-grid;
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      place-items: center;
+      background: linear-gradient(135deg, #d7623d, #f0b690);
+      color: #fffaf2;
+      font-family: "Space Grotesk", sans-serif;
+      font-weight: 700;
+      font-size: 1.4rem;
+      margin-bottom: 10px;
+    }
+    
+    /* --- Login card ------------------------------------------- */
     .card-pf {
-      background: rgba(30, 41, 59, 0.7) !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
-      border-radius: 16px !important;
-      backdrop-filter: blur(12px) !important;
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+      width: min(480px, 100%) !important;
+      border: 1px solid var(--line) !important;
+      border-radius: 24px !important;
+      background: var(--surface) !important;
+      box-shadow: var(--shadow) !important;
+      padding: 36px 32px !important;
+      backdrop-filter: blur(3px);
+      float: none !important;
+      margin: 0 auto !important;
     }
-    input[type="text"], input[type="password"] {
-      background: rgba(15, 23, 42, 0.6) !important;
-      border: 1px solid rgba(255, 255, 255, 0.15) !important;
-      border-radius: 8px !important;
-      color: #ffffff !important;
-    }
-    .btn-primary {
-      background: linear-gradient(90deg, #4f46e5 0%, #6366f1 100%) !important;
+    
+    /* --- Card title (h1) -------------------------------------- */
+    #kc-page-title,
+    .login-pf-header h1 {
+      font-family: "Space Grotesk", sans-serif !important;
+      font-size: 1.65rem !important;
+      font-weight: 700 !important;
+      color: var(--ink) !important;
+      margin: 0 0 24px 0 !important;
+      padding: 0 !important;
+      text-align: center !important;
       border: none !important;
-      border-radius: 8px !important;
+    }
+    
+    /* --- Form groups ------------------------------------------ */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    /* --- Labels ----------------------------------------------- */
+    label,
+    .pf-c-form__label,
+    .pf-c-form__label-text {
+      display: block !important;
+      font-family: "Manrope", sans-serif !important;
+      font-size: 0.95rem !important;
+      font-weight: 700 !important;
+      color: var(--ink) !important;
+      margin-bottom: 6px !important;
+    }
+    
+    /* --- Inputs ----------------------------------------------- */
+    input.pf-c-form-control,
+    .pf-c-form-control {
+      display: block !important;
+      width: 100% !important;
+      border: 1.5px solid var(--line) !important;
+      border-radius: 12px !important;
+      padding: 11px 14px !important;
+      background: rgba(255, 255, 255, 0.82) !important;
+      font-family: "Manrope", sans-serif !important;
+      font-size: 1rem !important;
+      color: var(--ink) !important;
+      box-shadow: none !important;
+      outline: none !important;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      height: auto !important;
+    }
+    
+    input.pf-c-form-control:focus,
+    .pf-c-form-control:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 3px rgba(215, 98, 61, 0.15) !important;
+    }
+    
+    /* Input + show-password wrapper */
+    .pf-c-input-group {
+      display: flex !important;
+      gap: 0 !important;
+    }
+    
+    .pf-c-input-group input.pf-c-form-control {
+      border-radius: 12px 0 0 12px !important;
+    }
+    
+    .pf-c-button.pf-m-control {
+      border: 1.5px solid var(--line) !important;
+      border-left: none !important;
+      border-radius: 0 12px 12px 0 !important;
+      background: rgba(255, 255, 255, 0.82) !important;
+      color: var(--muted) !important;
+      padding: 0 14px !important;
+      cursor: pointer;
+    }
+    
+    /* --- Submit button ---------------------------------------- */
+    #kc-login,
+    input#kc-login {
+      display: block !important;
+      width: 100% !important;
+      border: none !important;
+      border-radius: 999px !important;
+      padding: 13px 16px !important;
+      background: var(--ink) !important;
+      color: #fffaf3 !important;
+      font-family: "Manrope", sans-serif !important;
+      font-size: 1.05rem !important;
+      font-weight: 800 !important;
+      cursor: pointer !important;
+      text-align: center !important;
+      transition: opacity 0.15s;
+      margin-top: 8px;
+    }
+    
+    #kc-login:hover,
+    input#kc-login:hover {
+      opacity: 0.85 !important;
+    }
+    
+    /* --- Checkboxes / remember me ----------------------------- */
+    input[type="checkbox"] {
+      accent-color: var(--accent);
+    }
+    
+    .login-pf-settings label {
+      font-family: "Manrope", sans-serif !important;
+      font-size: 0.95rem !important;
       font-weight: 600 !important;
+      color: var(--ink) !important;
+    }
+    
+    /* --- Registration / footer links -------------------------- */
+    #kc-registration,
+    #kc-registration-container {
+      text-align: center;
+      font-size: 0.95rem;
+      color: var(--muted);
+      margin-top: 20px;
+      font-family: "Manrope", sans-serif;
+    }
+    
+    #kc-registration a,
+    #kc-registration-container a {
+      color: var(--accent) !important;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    
+    #kc-registration a:hover,
+    #kc-registration-container a:hover {
+      text-decoration: underline;
+    }
+    
+    /* --- Error / alert messages ------------------------------- */
+    .alert,
+    .alert-danger,
+    .alert-error,
+    #kc-error-message {
+      border: 1.5px solid rgba(155, 45, 45, 0.30) !important;
+      border-radius: 12px !important;
+      background: rgba(155, 45, 45, 0.08) !important;
+      color: var(--danger) !important;
+      padding: 10px 14px !important;
+      font-size: 0.95rem !important;
+      font-weight: 700 !important;
+      font-family: "Manrope", sans-serif !important;
+      margin-bottom: 14px;
+    }
+    
+    .alert-warning {
+      border-color: rgba(153, 98, 15, 0.30) !important;
+      background: rgba(153, 98, 15, 0.08) !important;
+      color: #6e460a !important;
+    }
+    
+    .alert-success {
+      border-color: rgba(31, 122, 75, 0.30) !important;
+      background: rgba(31, 122, 75, 0.07) !important;
+      color: #155635 !important;
+    }
+    
+    /* --- Strip PF container padding/backgrounds --------------- */
+    .login-pf-page .container-fluid,
+    #kc-content,
+    #kc-content-wrapper,
+    #kc-form,
+    #kc-form-wrapper,
+    #kc-form-buttons {
+      background: transparent !important;
+      border: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      width: 100% !important;
+      float: none !important;
+    }
+    
+    /* --- Divider ---------------------------------------------- */
+    hr {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 16px 0;
+    }
+    
+    /* --- Hide Keycloak's default info block (removes empty grey box) --- */
+    #kc-info {
+      display: none !important;
     }
   uastream.js: |
-    /* Custom JavaScript loaded in the UAStream login page */
-    console.log("UAStream custom keycloak theme successfully loaded.");
+    document.addEventListener("DOMContentLoaded", () => {
+        // Check if we're on the login page
+        const loginForm = document.querySelector("#kc-form-login");
+        const submitBtnWrapper = document.querySelector("#kc-form-buttons");
+        const submitBtn = document.querySelector("#kc-login");
+    
+        if (!loginForm || !submitBtnWrapper || !submitBtn) return;
+    
+        // Create the wrapper matching the container structure
+        const registerWrapper = document.createElement("div");
+        registerWrapper.className = submitBtnWrapper.className;
+        // Add margin so it doesn't stick to the login button
+        registerWrapper.style.marginTop = "0.75rem";
+    
+        // Create the 'Create account' button
+        const registerBtn = document.createElement("a");
+        registerBtn.href = "http://uastream.com/auth#register";
+        registerBtn.innerText = "Create account";
+        
+        // Copy the original button's classes
+        let btnClasses = submitBtn.className;
+        
+        // If it uses PatternFly 5/4 styles (e.g. pf-v5-c-button pf-m-primary)
+        // convert it to secondary control
+        btnClasses = btnClasses.replace("m-primary", "m-secondary");
+        // If it's PF3/Bootstrap: btn-primary -> btn-default
+        btnClasses = btnClasses.replace("btn-primary", "btn-default");
+    
+        registerBtn.className = btnClasses;
+        // Just force it to behave like a block element, typical for secondary buttons inside the form group
+        registerBtn.style.display = "block";
+        registerBtn.style.textAlign = "center";
+        registerBtn.style.textDecoration = "none";
+        
+        // Some basic CSS fix to override `a` tag defaults if they look like simple links
+        if (btnClasses.includes("pf-")) {
+          // PatternFly explicit color overrides just in case standard text color takes precedence
+          registerBtn.style.color = "#151515"; 
+        }
+    
+        registerWrapper.appendChild(registerBtn);
+        submitBtnWrapper.parentNode.appendChild(registerWrapper);
+    
+        // Hide Keycloak's default registration block if it happens to show up
+        const existingReg = document.querySelector("#kc-registration");
+        if (existingReg) existingReg.style.display = "none";
+    });
 ---
 apiVersion: apps/v1
 kind: Deployment
