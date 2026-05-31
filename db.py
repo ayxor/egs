@@ -136,12 +136,21 @@ def get_video(video_id):
             return cur.fetchone()
 
 
+def increment_video_views(video_id):
+    with _get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE videos SET views = views + 1 WHERE id = %s",
+                (video_id,),
+            )
+
+
 def get_videos_by_uploader(uploader_id):
     with _get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id
+                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id, views
                 FROM videos
                 WHERE uploader_id = %s AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -223,7 +232,7 @@ def search_videos(user_id=None, q=None, course=None, subject=None,
                 f"""
                 SELECT videos.id, videos.title, videos.description, videos.tags, videos.course, videos.subject,
                        videos.uploader_id, videos.status, videos.storage_bucket, videos.thumbnail_key, videos.created_at,
-                       videos.channel_id, c.name AS channel_name, c.visibility AS channel_visibility,
+                       videos.channel_id, videos.views, c.name AS channel_name, c.visibility AS channel_visibility,
                        u.name AS uploader_name
                 FROM videos
                 LEFT JOIN channels c ON videos.channel_id = c.id
@@ -316,28 +325,28 @@ def create_processing_job(video_id, external_job_id, operations, processed_key=N
             return cur.fetchone()
 
 
-def update_processing_job(external_job_id, status, percent, error_message=None):
+def update_processing_job(external_job_id, status, percent, error_message=None, message=None):
     with _get_connection() as conn:
         with conn.cursor() as cur:
             if status in ("done", "failed"):
                 cur.execute(
                     """
                     UPDATE processing_jobs
-                    SET status = %s, percent = %s, error_message = %s,
+                    SET status = %s, percent = %s, error_message = %s, message = %s,
                         updated_at = NOW(), completed_at = NOW()
                     WHERE external_job_id = %s
                     """,
-                    (status, percent, error_message, external_job_id),
+                    (status, percent, error_message, message, external_job_id),
                 )
             else:
                 cur.execute(
                     """
                     UPDATE processing_jobs
-                    SET status = %s, percent = %s, error_message = %s,
+                    SET status = %s, percent = %s, error_message = %s, message = %s,
                         updated_at = NOW()
                     WHERE external_job_id = %s
                     """,
-                    (status, percent, error_message, external_job_id),
+                    (status, percent, error_message, message, external_job_id),
                 )
 
 
@@ -493,7 +502,7 @@ def get_videos_by_channel(channel_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id
+                SELECT id, title, description, tags, course, subject, status, storage_bucket, thumbnail_key, created_at, channel_id, views
                 FROM videos
                 WHERE channel_id = %s AND deleted_at IS NULL
                 ORDER BY created_at DESC
@@ -508,7 +517,7 @@ def get_subscribed_feed(user_id):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT v.id, v.title, v.description, v.tags, v.course, v.subject, v.status, v.storage_bucket, v.thumbnail_key, v.created_at, v.channel_id,
+                SELECT v.id, v.title, v.description, v.tags, v.course, v.subject, v.status, v.storage_bucket, v.thumbnail_key, v.created_at, v.channel_id, v.views,
                        c.name AS channel_name, c.visibility AS channel_visibility
                 FROM videos v
                 INNER JOIN channel_subscriptions s ON v.channel_id = s.channel_id

@@ -91,14 +91,18 @@ def login(email, password):
 
     Returns (http_status, response_body_dict).
     """
+    data = {
+        "grant_type": "password",
+        "client_id": config.KEYCLOAK_CLIENT_ID,
+        "username": email,
+        "password": password,
+    }
+    if config.KEYCLOAK_CLIENT_SECRET:
+        data["client_secret"] = config.KEYCLOAK_CLIENT_SECRET
+
     resp = requests.post(
         _token_url(),
-        data={
-            "grant_type": "password",
-            "client_id": config.KEYCLOAK_CLIENT_ID,
-            "username": email,
-            "password": password,
-        },
+        data=data,
         timeout=10,
     )
     return resp.status_code, resp.json()

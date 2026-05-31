@@ -35,7 +35,10 @@
         <p class="eyebrow">Step 2</p>
         <h2 id="selected-channel-header">Lectures in Channel</h2>
       </div>
-      <span class="tag" id="selected-channel-visibility-pill">public</span>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span class="tag" id="selected-channel-visibility-pill">public</span>
+        <button class="button" id="view-subscribers-btn" style="font-size: 0.82rem; padding: 6px 12px; margin: 0; background: rgba(31, 122, 114, 0.08); color: var(--accent); border: 1px solid rgba(31, 122, 114, 0.2);" onclick="showChannelSubscribers()">👥 View Subscribers</button>
+      </div>
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow);">
@@ -43,12 +46,13 @@
         <thead>
           <tr style="background: rgba(28, 20, 13, 0.03);">
             <th style="text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Lecture Title</th>
+            <th style="text-align: left; padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Views</th>
             <th style="padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Status</th>
             <th style="text-align: right; padding: 14px 16px; border-bottom: 1px solid var(--border); font-family: 'Space Grotesk', sans-serif;">Actions</th>
           </tr>
         </thead>
         <tbody id="studio-video-list">
-          <tr><td colspan="3" style="padding: 24px; text-align: center;">Select a channel above to load videos.</td></tr>
+          <tr><td colspan="4" style="padding: 24px; text-align: center;">Select a channel above to load videos.</td></tr>
         </tbody>
       </table>
     </div>
@@ -114,6 +118,34 @@
         <button type="submit" class="button primary">Save Changes</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- View Subscribers Modal -->
+<div id="subscribers-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 102; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+  <div class="card" style="width: min(550px, 95vw); max-height: 80vh; display: flex; flex-direction: column; padding: 24px; box-shadow: var(--shadow); overflow: hidden;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h2 style="font-family: 'Space Grotesk', sans-serif; margin: 0;" id="subscribers-modal-title">Subscribed Students</h2>
+      <button class="button small ghost" style="margin: 0; padding: 4px 8px; font-size: 1.2rem;" onclick="closeSubscribersModal()">✕</button>
+    </div>
+    
+    <div style="flex: 1; overflow-y: auto; margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: rgba(28,20,13,0.01);">
+      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+        <thead>
+          <tr style="background: rgba(28,20,13,0.03); border-bottom: 1px solid var(--border);">
+            <th style="padding: 10px 12px; font-size: 0.85rem; font-weight: 700; color: var(--muted); text-transform: uppercase;">Name</th>
+            <th style="padding: 10px 12px; font-size: 0.85rem; font-weight: 700; color: var(--muted); text-transform: uppercase;">Email</th>
+          </tr>
+        </thead>
+        <tbody id="subscribers-list-tbody">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+    </div>
+    
+    <div style="display: flex; justify-content: flex-end;">
+      <button class="button primary" onclick="closeSubscribersModal()">Close</button>
+    </div>
   </div>
 </div>
 {% endblock %}

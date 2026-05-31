@@ -600,8 +600,42 @@ def get_channel_endpoint(channel_id):
                 "status": v["status"],
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+                "views": v.get("views", 0),
             }
             for v in videos
+        ]
+    }), 200
+
+@app.route("/channels/<channel_id>/subscribers", methods=["GET"])
+def get_channel_subscribers_endpoint(channel_id):
+    """List subscribers of a course channel. Restricted to the channel owner."""
+    if not _UUID_RE.match(channel_id):
+        return jsonify({"error": "channel not found"}), 404
+
+    payload, err = _jwt_required()
+    if err:
+        return err
+
+    user = db.get_user_by_keycloak_id(payload["user_id"])
+    if not user:
+        return jsonify({"error": "user not found"}), 404
+
+    channel = db.get_channel(channel_id)
+    if not channel:
+        return jsonify({"error": "channel not found"}), 404
+
+    # Restrict strictly to channel owner
+    if str(channel["owner_id"]) != str(user["id"]):
+        return jsonify({"error": "forbidden - only the channel owner can view subscribers"}), 403
+
+    subscribers = db.get_channel_subscribers(channel_id)
+    return jsonify({
+        "results": [
+            {
+                "name": sub["name"],
+                "email": sub["email"],
+            }
+            for sub in subscribers
         ]
     }), 200
 
@@ -808,12 +842,92 @@ def upload_video_endpoint():
     return jsonify({"video_id": str(video["id"])}), 201
 
 
+def _run_processing_job_in_background(video_id, external_job_id, bucket, processed_key, thumb_key, title, channel_id, user_email, user_name):
+    """Actively polls the passive Video Editor, uploads results, and finalizes DB."""
+    logger.info("Spawning background thread for video finalization of video_id: %s, job_id: %s", video_id, external_job_id)
+    try:
+        # Stream progress from the Video Editor
+        for raw_event in services.stream_job_progress(external_job_id):
+            data_str = raw_event.strip()
+            if data_str.startswith("data:"):
+                data_str = data_str[5:].strip()
+
+            try:
+                event_data = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+
+            status = event_data.get("status")
+            percent = event_data.get("percent", 0)
+            msg = event_data.get("message", "")
+
+            if status == "done":
+                try:
+                    logger.info("Background job %s done. Downloading result...", external_job_id)
+                    # Pull final video
+                    processed_bytes = services.download_job_result(external_job_id)
+                    services.upload_object(bucket, processed_key, processed_bytes)
+                    
+                    # Pull thumbnail
+                    try:
+                        thumb_bytes = services.download_job_thumbnail(external_job_id)
+                        services.upload_object(bucket, thumb_key, thumb_bytes)
+                    except Exception as e:
+                        logger.error("Failed to pull thumbnail for job %s: %s", external_job_id, e)
+
+                    # Finalise video in DB
+                    db.update_video_status(video_id, "ready", processed_key, thumbnail_key=thumb_key)
+                    db.update_processing_job(external_job_id, "done", 100, message="Processing complete.")
+
+                    # Send notification to uploader
+                    try:
+                        services.send_email(
+                            to=user_email,
+                            subject="Vídeo processado com sucesso",
+                            template="upload_complete",
+                            data={"name": user_name, "title": title},
+                        )
+                    except Exception as email_err:
+                        logger.error("Failed to send email to uploader: %s", email_err)
+                    
+                    # Send notification to subscribers
+                    try:
+                        _notify_students(title, channel_id, user_name)
+                    except Exception as notify_err:
+                        logger.error("Failed to notify students: %s", notify_err)
+                        
+                except Exception as e:
+                    logger.error("Failed to finalize video %s in background: %s", video_id, e)
+                    db.update_video_status(video_id, "failed")
+                    db.update_processing_job(external_job_id, "failed", 0, str(e), message="Finalization failed.")
+                return
+
+            elif status == "failed":
+                err_msg = event_data.get("error", "processing failed")
+                logger.error("Background job %s reported failure: %s", external_job_id, err_msg)
+                db.update_video_status(video_id, "failed")
+                db.update_processing_job(external_job_id, "failed", 0, err_msg, message="Processing failed.")
+                return
+
+            else:
+                # Intermediate progress
+                db.update_processing_job(external_job_id, status, percent, message=msg)
+
+    except Exception as exc:
+        logger.error("Background job processing exception for job %s: %s", external_job_id, exc)
+        try:
+            db.update_video_status(video_id, "failed")
+            db.update_processing_job(external_job_id, "failed", 0, str(exc), message="Unexpected background error.")
+        except Exception as db_exc:
+            logger.error("Failed to mark job/video as failed in DB: %s", db_exc)
+
+
 @app.route("/videos/process", methods=["POST"])
 def upload_video_with_processing():
     """Upload a video WITH Video Editor processing.
 
     Returns 202 with an SSE stream relaying real-time progress from the
-    Video Editor. The final SSE event (status: done) includes the video_id.
+    local database. The final SSE event (status: done) includes the video_id.
     """
     payload, err = _professor_required()
     if err:
@@ -896,73 +1010,53 @@ def upload_video_with_processing():
     # 5) Record processing job in DB
     db.create_processing_job(video_id, external_job_id, operations, processed_key)
 
-    # 6) Relay SSE progress from Video Editor to the client
+    # 6) Spawn the background finalization thread
+    import threading
+    t = threading.Thread(
+        target=_run_processing_job_in_background,
+        args=(video_id, external_job_id, bucket, processed_key, thumb_key, title, channel_id, user["email"], user["name"])
+    )
+    t.daemon = True
+    t.start()
+
+    # 7) Relay SSE progress to client by polling PostgreSQL database
     def _sse_relay():
-        try:
-            for raw_event in services.stream_job_progress(external_job_id):
-                data_str = raw_event.strip()
-                if data_str.startswith("data:"):
-                    data_str = data_str[5:].strip()
+        import time
+        last_percent = -1
+        last_status = ""
+        last_msg = ""
+        while True:
+            try:
+                job = db.get_processing_job_by_external_id(external_job_id)
+                if not job:
+                    yield f"data: {json.dumps({'status': 'failed', 'error': 'Job not found'})}\n\n"
+                    return
 
-                try:
-                    event_data = json.loads(data_str)
-                except json.JSONDecodeError:
-                    yield raw_event
-                    continue
+                status = job["status"]
+                percent = job["percent"]
+                msg = job.get("message") or ""
 
-                status = event_data.get("status")
-
-                if status == "done":
-                    # Composer acts as the active puller
-                    try:
-                        # Pull final video
-                        processed_bytes = services.download_job_result(external_job_id)
-                        services.upload_object(bucket, processed_key, processed_bytes)
-                        # Pull thumbnail
-                        try:
-                            thumb_bytes = services.download_job_thumbnail(external_job_id)
-                            services.upload_object(bucket, thumb_key, thumb_bytes)
-                        except Exception as e:
-                            logger.error("Failed to pull thumbnail: %s", e)
-                            
-                        # Finalise video
-                        db.update_video_status(video_id, "ready", processed_key, thumbnail_key=thumb_key)
-                        db.update_processing_job(external_job_id, "done", 100)
-                    except Exception as e:
-                        logger.error("Failed to fetch Video Editor result: %s", e)
-                        db.update_video_status(video_id, "failed")
-                        db.update_processing_job(external_job_id, "failed", 0, str(e))
-                        yield f"data: {json.dumps({'status': 'failed', 'error': 'Failed retrieving result.'})}\n\n"
-                        return
-
-                    event_data["video_id"] = video_id
+                if status != last_status or percent != last_percent or msg != last_msg:
+                    event_data = {
+                        "status": status,
+                        "percent": percent,
+                        "message": msg,
+                        "video_id": video_id
+                    }
+                    if status == "failed" and job.get("error_message"):
+                        event_data["error"] = job["error_message"]
                     yield f"data: {json.dumps(event_data)}\n\n"
-                    
-                    # Send notification
-                    services.send_email(
-                        to=user["email"],
-                        subject="Vídeo processado com sucesso",
-                        template="upload_complete",
-                        data={"name": user["name"], "title": title},
-                    )
-                    _notify_students(title, channel_id, user["name"])
+                    last_status = status
+                    last_percent = percent
+                    last_msg = msg
+
+                if status in ("done", "failed"):
                     return
-                elif status == "failed":
-                    db.update_video_status(video_id, "failed")
-                    db.update_processing_job(
-                        external_job_id, "failed", 0, "processing failed"
-                    )
-                    yield raw_event
-                    return
-                else:
-                    # Intermediate progress
-                    percent = event_data.get("percent", 0)
-                    db.update_processing_job(external_job_id, status, percent)
-                    yield raw_event
-        except Exception as exc:
-            logger.error("SSE relay error: %s", exc)
-            db.update_video_status(video_id, "failed")
-            yield f'data: {json.dumps({"error": "stream interrupted"})}\n\n'
+                time.sleep(0.5)
+            except Exception as e:
+                logger.error("SSE database polling error: %s", e)
+                yield f"data: {json.dumps({'status': 'failed', 'error': 'stream interrupted'})}\n\n"
+                return
 
     return Response(_sse_relay(), status=202, mimetype="text/event-stream")
 
@@ -991,6 +1085,7 @@ def list_my_videos_endpoint():
                 "status": v["status"],
                 "thumbnail_url": f"/internal/storage/{quote(v['storage_bucket'])}/{v['thumbnail_key']}" if v.get("thumbnail_key") else None,
                 "created_at": v["created_at"].isoformat() if v["created_at"] else None,
+                "views": v.get("views", 0),
             }
             for v in videos
         ]
@@ -1085,6 +1180,7 @@ def list_videos_endpoint():
                 "channel_id": str(v["channel_id"]) if v.get("channel_id") else None,
                 "channel_name": v.get("channel_name"),
                 "uploader_name": v.get("uploader_name"),
+                "views": v.get("views", 0),
             }
             for v in results
         ],
@@ -1119,6 +1215,12 @@ def get_video_endpoint(video_id):
     video = db.get_video(video_id)
     if not video:
         print("VIDEOupload_page NOT FOUND"); return jsonify({"error": "video not found"}), 404
+
+    # Increment views count
+    try:
+        db.increment_video_views(video_id)
+    except Exception as e:
+        logger.error("Failed to increment views for video %s: %s", video_id, e)
 
     # Enforce channel visibility rules
     channel_id = video.get("channel_id")
@@ -1161,6 +1263,7 @@ def get_video_endpoint(video_id):
         "stream_url": stream_url,
         "channel_id": str(channel_id) if channel_id else None,
         "channel_name": video.get("channel_name"),
+        "views": video.get("views", 0),
     }), 200
 
 

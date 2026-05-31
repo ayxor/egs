@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS videos (
     status                  TEXT        NOT NULL DEFAULT 'uploaded'
                                         CHECK (status IN ('uploading','uploaded','processing','ready','failed')),
     channel_id              UUID        REFERENCES channels(id) ON DELETE SET NULL,
+    views                   INT         NOT NULL DEFAULT 0,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at              TIMESTAMPTZ
@@ -59,6 +60,8 @@ CREATE TABLE IF NOT EXISTS videos (
 
 -- Migration for existing databases
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_id UUID REFERENCES channels(id) ON DELETE SET NULL;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+ALTER TABLE processing_jobs ADD COLUMN IF NOT EXISTS message TEXT;
 
 
 -- Processing jobs (tracks Video Editor jobs)
@@ -72,6 +75,7 @@ CREATE TABLE IF NOT EXISTS processing_jobs (
     percent           INT         NOT NULL DEFAULT 0,
     operations        JSONB,
     error_message     TEXT,
+    message           TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at      TIMESTAMPTZ

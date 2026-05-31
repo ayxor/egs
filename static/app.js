@@ -162,7 +162,7 @@ function mapApiVideos(results = []) {
     description: video.description || "No description provided.",
     tags: [...(video.tags || []), "recent"],
     duration: "Lecture",
-    views: "Scoped access",
+    views: video.views !== undefined ? `${video.views} views` : "0 views",
     thumbnail_url: video.thumbnail_url,
     accent: idx % 2
       ? "linear-gradient(135deg, #2a7b77, #7bc6be)"
@@ -249,10 +249,10 @@ function renderVideoCards(targetId) {
           </a>
           <div class="video-body">
             <h3><a href="/watch/${encodeURIComponent(video.id)}">${escapeHtml(video.title)}</a></h3>
-            <p>${escapeHtml(video.description)}</p>
             <div class="video-meta">
               <span>By: <strong>${escapeHtml(video.professor)}</strong></span>
               <span>Class: <strong>${escapeHtml(video.course)}</strong></span>
+              <span>Views: <strong>${escapeHtml(video.views)}</strong></span>
             </div>
           </div>
         </article>
@@ -345,6 +345,7 @@ async function setupWatchPage() {
   const meta = document.getElementById("watch-meta");
   const title2 = document.getElementById("watch-title-secondary");
   const description = document.getElementById("watch-description");
+  const viewsEl = document.getElementById("watch-views");
   const videoEl = document.getElementById("watch-video");
   const overlay = document.getElementById("player-overlay");
 
@@ -361,6 +362,7 @@ async function setupWatchPage() {
       if (title) title.textContent = videoData.title || "Unknown Title";
       if (title2) title2.textContent = videoData.title || "Unknown Title";
       if (description) description.textContent = videoData.description || "No description.";
+      if (viewsEl) viewsEl.textContent = `${videoData.views !== undefined ? videoData.views : 0} views`;
       if (meta) meta.textContent = `${videoData.uploader_id || 'Professor'} · ${videoData.subject || 'Subject'} · ${videoData.course || 'Course'}`;
       
       if (videoEl && videoData.stream_url) {
@@ -919,7 +921,7 @@ async function loadStudioChannelVideos(channelId) {
   const tbody = document.getElementById("studio-video-list");
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="3" style="padding: 24px; text-align: center;">Loading lectures...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" style="padding: 24px; text-align: center;">Loading lectures...</td></tr>';
   
   try {
     const res = await requestJson(`/channels/${channelId}`, {
@@ -928,15 +930,19 @@ async function loadStudioChannelVideos(channelId) {
     const videos = res.results || [];
     
     if (videos.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="3" style="padding: 24px; text-align: center;">No lectures uploaded to this channel yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="padding: 24px; text-align: center;">No lectures uploaded to this channel yet.</td></tr>';
       return;
     }
     
     tbody.innerHTML = videos.map(v => `
       <tr>
         <td style="padding: 14px 16px; border-bottom: 1px solid var(--border);">
-          <strong style="font-size: 0.98rem;">${escapeHtml(v.title)}</strong><br>
+          ${v.status === 'ready' ? `<a href="/watch/${v.video_id}" style="color: var(--accent); font-weight: 700; font-size: 0.98rem; text-decoration: none; transition: color 0.15s;" onmouseover="this.style.color='var(--accent-hover)'" onmouseout="this.style.color='var(--accent)'">${escapeHtml(v.title)}</a>` : `<strong style="font-size: 0.98rem; color: var(--muted);">${escapeHtml(v.title)}</strong>`}
+          <br>
           <small class="muted" style="margin-top: 4px; display: inline-block;">${escapeHtml(v.description || 'No description provided')}</small>
+        </td>
+        <td style="padding: 14px 16px; border-bottom: 1px solid var(--border); text-align: left;">
+          <span style="font-weight: 500; color: var(--text);">${v.views !== undefined ? v.views : 0} views</span>
         </td>
         <td style="padding: 14px 16px; border-bottom: 1px solid var(--border); text-align: center;">
           <span class="tag ${v.status === 'ready' ? '' : 'warn'}" style="margin: 0;">${escapeHtml(v.status)}</span>
@@ -1309,5 +1315,45 @@ async function populateChannelSelects() {
     console.error("Failed to populate channels selector:", err);
   }
 }
+
+window.showChannelSubscribers = async function() {
+  const channelId = window.selectedStudioChannelId;
+  if (!channelId) return;
+
+  const modal = document.getElementById("subscribers-modal");
+  const tbody = document.getElementById("subscribers-list-tbody");
+  if (!modal || !tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="2" style="padding: 20px; text-align: center;">Loading subscribers...</td></tr>';
+  modal.style.display = "flex";
+
+  try {
+    const res = await requestJson(`/channels/${channelId}/subscribers`, {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    const subs = res.results || [];
+
+    if (subs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="2" style="padding: 20px; text-align: center;" class="muted">No subscribers yet for this class channel.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = subs.map(s => `
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px 12px; font-weight: 500; border-bottom: 1px solid var(--border);">${escapeHtml(s.name)}</td>
+        <td style="padding: 10px 12px; color: var(--muted); border-bottom: 1px solid var(--border);">${escapeHtml(s.email)}</td>
+      </tr>
+    `).join("");
+
+  } catch (err) {
+    console.error(err);
+    tbody.innerHTML = `<tr><td colspan="2" style="padding: 20px; text-align: center; color: var(--error);">Error loading subscribers: ${escapeHtml(err.message)}</td></tr>`;
+  }
+};
+
+window.closeSubscribersModal = function() {
+  const modal = document.getElementById("subscribers-modal");
+  if (modal) modal.style.display = "none";
+};
 
 
