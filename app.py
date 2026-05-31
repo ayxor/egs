@@ -1465,10 +1465,188 @@ def receive_job_progress():
 
     return "", 204
 
+# ---------------------------------------------------------------------------
+# Metrics & Observability Implementation
+# ---------------------------------------------------------------------------
+import time
+import threading
+import requests
+from collections import defaultdict
+
+_metrics_lock = threading.Lock()
+_http_requests_total = defaultdict(int)
+_http_request_duration_seconds = defaultdict(float)
+
+@app.before_request
+def before_request_metrics():
+    request.start_time = time.time()
+
+@app.after_request
+def after_request_metrics(response):
+    duration = 0.0
+    if hasattr(request, 'start_time'):
+        duration = time.time() - request.start_time
+    
+    path = request.path
+    path = re.sub(r'/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '/<uuid>', path)
+    path = re.sub(r'/watch/[^/]+', '/watch/<video_id>', path)
+    path = re.sub(r'/channels/[^/]+', '/channels/<channel_id>', path)
+    path = re.sub(r'/internal/storage/[^/]+/[^/]+', '/internal/storage/<bucket>/<key>', path)
+    
+    method = request.method
+    status = str(response.status_code)
+    
+    with _metrics_lock:
+        _http_requests_total[(method, path, status)] += 1
+        _http_request_duration_seconds[(method, path)] += duration
+        
+    return response
+
+def fetch_k8s_pod_metrics():
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    ns_path = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+    
+    if not os.path.exists(token_path) or not os.path.exists(ns_path):
+        return []
+        
+    try:
+        import datetime
+        with open(token_path, "r") as f:
+            token = f.read().strip()
+        with open(ns_path, "r") as f:
+            namespace = f.read().strip()
+            
+        headers = {"Authorization": f"Bearer {token}"}
+        metrics_lines = []
+        
+        # 1. Fetch Pod metrics (CPU/RAM)
+        try:
+            metrics_url = f"https://kubernetes.default.svc/apis/metrics.k8s.io/v1beta1/namespaces/{namespace}/pods"
+            response = requests.get(metrics_url, headers=headers, verify=False, timeout=2.0)
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get("items", []):
+                    pod_name = item.get("metadata", {}).get("name", "")
+                    app_name = item.get("metadata", {}).get("labels", {}).get("app", "")
+                    if not app_name:
+                        app_name = pod_name.split("-")[0]
+                        
+                    for container in item.get("containers", []):
+                        container_name = container.get("name", "")
+                        usage = container.get("usage", {})
+                        
+                        cpu_str = usage.get("cpu", "0n")
+                        cpu_nanocores = 0
+                        if cpu_str.endswith("n"):
+                            cpu_nanocores = int(cpu_str[:-1])
+                        elif cpu_str.endswith("u"):
+                            cpu_nanocores = int(cpu_str[:-1]) * 1000
+                        elif cpu_str.endswith("m"):
+                            cpu_nanocores = int(cpu_str[:-1]) * 1000000
+                        else:
+                            try:
+                                cpu_nanocores = int(cpu_str) * 1000000000
+                            except Exception:
+                                pass
+                        
+                        cpu_cores = cpu_nanocores / 1000000000.0
+                        
+                        mem_str = usage.get("memory", "0Ki")
+                        mem_bytes = 0
+                        if mem_str.endswith("Ki"):
+                            mem_bytes = int(mem_str[:-2]) * 1024
+                        elif mem_str.endswith("Mi"):
+                            mem_bytes = int(mem_str[:-2]) * 1024 * 1024
+                        elif mem_str.endswith("Gi"):
+                            mem_bytes = int(mem_str[:-2]) * 1024 * 1024 * 1024
+                        else:
+                            try:
+                                mem_bytes = int(mem_str)
+                            except Exception:
+                                pass
+                                
+                        metrics_lines.append(
+                            f'kube_pod_cpu_usage_cores{{pod="{pod_name}",app="{app_name}",container="{container_name}"}} {cpu_cores:.6f}'
+                        )
+                        metrics_lines.append(
+                            f'kube_pod_memory_usage_bytes{{pod="{pod_name}",app="{app_name}",container="{container_name}"}} {mem_bytes}'
+                        )
+        except Exception as exc:
+            logger.warning("Exception fetching pod metrics: %s", exc)
+            
+        # 2. Fetch Pod metadata (Uptime and status phase)
+        try:
+            pods_url = f"https://kubernetes.default.svc/api/v1/namespaces/{namespace}/pods"
+            response = requests.get(pods_url, headers=headers, verify=False, timeout=2.0)
+            if response.status_code == 200:
+                data = response.json()
+                now_ts = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                
+                for item in data.get("items", []):
+                    pod_name = item.get("metadata", {}).get("name", "")
+                    app_name = item.get("metadata", {}).get("labels", {}).get("app", "")
+                    if not app_name:
+                        app_name = pod_name.split("-")[0]
+                        
+                    status = item.get("status", {})
+                    phase = status.get("phase", "Unknown")
+                    start_time_str = status.get("startTime")
+                    
+                    # Expose status phase gauge
+                    metrics_lines.append(
+                        f'kube_pod_status{{pod="{pod_name}",app="{app_name}",phase="{phase}"}} 1'
+                    )
+                    
+                    if start_time_str:
+                        try:
+                            cleaned = start_time_str.split(".")[0].rstrip("Z")
+                            dt = datetime.datetime.strptime(cleaned, "%Y-%m-%dT%H:%M:%S")
+                            start_ts = dt.replace(tzinfo=datetime.timezone.utc).timestamp()
+                            uptime = max(0.0, now_ts - start_ts)
+                            metrics_lines.append(
+                                f'kube_pod_uptime_seconds{{pod="{pod_name}",app="{app_name}"}} {int(uptime)}'
+                            )
+                        except Exception:
+                            pass
+        except Exception as exc:
+            logger.warning("Exception fetching pod statuses/uptime: %s", exc)
+            
+        return metrics_lines
+    except Exception as exc:
+        logger.warning("Exception while fetching pod metrics: %s", exc)
+        return []
+
+@app.route("/metrics", methods=["GET"])
+def get_metrics():
+    lines = []
+    
+    # Standard metrics representing the composer service being up
+    lines.append('up{job="composer"} 1')
+    
+    with _metrics_lock:
+        for (method, path, status), count in _http_requests_total.items():
+            lines.append(f'http_requests_total{{app="composer",method="{method}",path="{path}",status="{status}"}} {count}')
+        for (method, path), total_duration in _http_request_duration_seconds.items():
+            lines.append(f'http_request_duration_seconds_sum{{app="composer",method="{method}",path="{path}"}} {total_duration:.6f}')
+            count_for_dur = sum(
+                cnt for (m, p, s), cnt in _http_requests_total.items()
+                if m == method and p == path
+            )
+            lines.append(f'http_request_duration_seconds_count{{app="composer",method="{method}",path="{path}"}} {count_for_dur}')
+            
+    try:
+        k8s_lines = fetch_k8s_pod_metrics()
+        lines.extend(k8s_lines)
+    except Exception as exc:
+        logger.warning("Error fetching k8s pod metrics: %s", exc)
+        
+    return Response("\n".join(lines) + "\n", mimetype="text/plain")
+
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
     # Initialise database
