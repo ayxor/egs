@@ -4,6 +4,8 @@ The IAM branch is a Keycloak-based identity service. It is the single source of 
 
 Composer is the only application service that talks to IAM directly.
 
+Note: The files in this folder contain the realm definition and user login theme configurations that are mounted directly into the official Keycloak Docker image used in the stack. Stale Python Flask replica files have been removed.
+
 ## Responsibilities
 
 - Authenticate users through Keycloak login flows
@@ -16,12 +18,12 @@ Composer is the only application service that talks to IAM directly.
 
 IAM does not store platform metadata such as videos, jobs, or notifications.
 
-## Public URLs
+## API Reference
+
+### Public URLs
 
 - Public host: `http://uastream.com`
 - Internal service URL: `http://keycloak:8080`
-
-## API Reference
 
 ### Realm Metadata / JWKS
 
@@ -74,7 +76,7 @@ Tokens carry the metadata Composer needs:
 | `role` | `student`, `professor`, etc. |
 | `institution` | Institution namespace |
 
-## Deployment
+## Runtime
 
 The realm is imported from `keycloak/realm-egs.json` on fresh startup. It configures the `egs-platform` client, redirect URIs, protocol mappers, and the `uastream` theme.
 
@@ -82,7 +84,9 @@ Theme assets live under `keycloak/themes/uastream/login/`.
 
 Local Keycloak runs in Docker and is reached through the stack managed by the `main` branch.
 
-## Environment Variables
+## Deployment
+
+### Environment Variables
 
 - `KEYCLOAK_ADMIN`
 - `KEYCLOAK_ADMIN_PASSWORD`
@@ -94,4 +98,4 @@ Local Keycloak runs in Docker and is reached through the stack managed by the `m
 
 - Redirect URIs must match the public hostname when the stack is behind Traefik.
 - `uastream.com` is the canonical public host for browser flows.
-- A realm import happens only when Keycloak starts with a fresh database volume.
+- Keycloak is running as the official docker image `quay.io/keycloak/keycloak:26.1`.
