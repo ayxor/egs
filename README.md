@@ -8,6 +8,8 @@ Object Storage is the binary file store branch. It is agnostic to UAStream busin
 - Video Editor writes processed files here
 - The service authenticates with API keys, not JWTs
 
+This branch is the byte-level storage backend, so the README focuses on bucket names, key paths, and direct download semantics rather than higher-level media workflows.
+
 ## API Reference
 
 Internal base URL: `http://object-storage:5000`
@@ -52,9 +54,11 @@ Also supports a `query` parameter to substring search bucket names `?query=subst
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/objects/{bucket}` | List all object keys in a bucket (paginated). |
-| `PUT` | `/objects/{bucket}?key={key}` | Upload a binary object. |
+| `PUT` | `/objects/{bucket}?key={key}` | Upload a binary object (Query Style). |
+| `PUT` | `/objects/{bucket}/{key}` | Upload a binary object (Path-Key Style). |
 | `GET` | `/objects/{bucket}/{key}` | Download a binary object. Supports HTTP Range requests. |
-| `DELETE` | `/objects/{bucket}?key={key}` | Delete an object. |
+| `DELETE` | `/objects/{bucket}?key={key}` | Delete an object (Query Style). |
+| `DELETE` | `/objects/{bucket}/{key}` | Delete an object (Path-Key Style). |
 
 **GET /objects/{bucket}**
 
@@ -66,7 +70,8 @@ Also supports a `query` parameter to substring search item keys `?query=substrin
 | `200 OK` | `{ "objects": ["raw/abc123.mp4"], "total": 1, "limit": 50, "offset": 0, "query": "" }` |
 | `404 Not Found` | Bucket does not exist |
 
-**PUT /objects/{bucket}?key={key}**
+**PUT /objects/{bucket}?key={key}**  
+**PUT /objects/{bucket}/{key}**
 
 Request body: raw binary (`Content-Type: application/octet-stream`).
 
@@ -74,6 +79,8 @@ Request body: raw binary (`Content-Type: application/octet-stream`).
 |---|---|
 | `201 Created` | `{ "bucket": "universidade-aveiro", "key": "raw/abc123.mp4" }` |
 | `400 Bad Request` | Invalid bucket or key |
+
+*Note: The path-style format `/objects/{bucket}/{key}` is the preferred method used internally by the Composer orchestrator to store and retrieve files.*
 
 **GET /objects/{bucket}/{key}**
 
@@ -89,16 +96,22 @@ Range: bytes=0-1023
 | `206 Partial Content` | Partial content returned in response to a Range request |
 | `404 Not Found` | Bucket or key does not exist |
 
-**DELETE /objects/{bucket}?key={key}**
+**DELETE /objects/{bucket}?key={key}**  
+**DELETE /objects/{bucket}/{key}**
 
 | Response | Description |
 |---|---|
 | `204 No Content` | Object deleted |
 | `404 Not Found` | Bucket or key does not exist |
 
+**POST /objects/{bucket}/{key}/presign**
+
+This endpoint returns a temporary download token for public-style access through the platform routing layer.
+The current implementation is a stub and should be treated as a placeholder, not a hardened production presign service.
+
 ---
 
-## Deployment
+## Runtime
 
 ### Run locally
 
@@ -106,8 +119,10 @@ Range: bytes=0-1023
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python app.py   # listens on :5000
+python app.py   # listens on :5000 by default
 ```
+
+*Note on Ports:* When running `app.py` directly, it listens on port `5000`. When deployed within the Docker container/Kubernetes cluster, it listens on port `8080` as configured by the Dockerfile (`FLASK_RUN_PORT=8080`).
 
 ### Environment variables
 
@@ -139,3 +154,43 @@ The service is built and started from the `object-storage` branch through the `m
 - Buckets are used as institution namespaces.
 - Keys map directly to file paths inside each bucket.
 - `uastream.com` is the public hostname for the stack, but object storage itself is an internal service.
+- Range requests are the main mechanism for direct playback and chunked delivery.
+
+---
+
+## Diagrams
+
+### Service Architecture & Flowchart
+
+This diagram details the Object Storage's internal layout, illustrating direct range requests for chunked video playback and the generation of SHA256 HMAC presigned tokens.
+
+```mermaid
+flowchart TB
+    Client["🌐 Client / Browser"]
+    Orch["🧠 Composer Orchestrator"]
+    
+    subgraph ObjectStorage["Object Storage Container"]
+        API["REST API\n(Verify Token or X-API-Key)"]
+        Presigner["POST /objects/{bucket}/{key}/presign\n(Generate SHA256 HMAC Token)"]
+        RangeHandler["GET /objects/{bucket}/{key}\n(Range Header check)"]
+        
+        subgraph Disk["Local Disk Backend"]
+            BucketDir["data/{bucket-name}/"]
+            NestedDir["raw/ | processed/ | thumbnails/"]
+            BinaryFile[["video.mp4 | thumbnail.jpg"]]
+        end
+    end
+
+    Orch -->|1. Request Presigned URL| Presigner
+    Presigner -->|2. Return signed URL with expiry token| Orch
+    Orch -->|3. Send signed URL| Client
+
+    Client -->|4. GET video stream with Range: bytes=X-Y| API
+    API --> RangeHandler
+    RangeHandler -->|5. Verify signature token & expiry| RangeHandler
+    RangeHandler -->|6. file.seek(X) & read(Y-X)| BinaryFile
+    RangeHandler -->|7. Return 206 Partial Content + Range Header| Client
+
+    BucketDir --> NestedDir
+    NestedDir --> BinaryFile
+```
