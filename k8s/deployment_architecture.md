@@ -56,6 +56,8 @@ To enforce security compliance, **no microservice holds hardcoded credentials** 
   4. Creates static scoped Vault access tokens (e.g., `token-composer`, `token-video-editor`) tied directly to their respective policies.
 * **Token Delivery:** These tokens are injected into their respective service pods from the Kubernetes `uastream-secrets` Secret.
 
+* **Vault Agent Sidecars:** The compose-based demo stack also includes AppRole-driven Vault Agent configs under [../vault-agent](../vault-agent/README.md). They render service-specific JSON files such as `/vault/secrets/composer.json` and `/vault/secrets/video-editor.json` from the same Vault KV paths used by the bootstrap job. This is a documentation companion to the Kubernetes flow rather than a separate cluster deployment object.
+
 ---
 
 ## 🔐 Identity & Access Management (Keycloak)
