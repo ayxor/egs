@@ -58,10 +58,7 @@ CREATE TABLE IF NOT EXISTS videos (
     deleted_at              TIMESTAMPTZ
 );
 
--- Migration for existing databases
-ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_id UUID REFERENCES channels(id) ON DELETE SET NULL;
-ALTER TABLE videos ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
-ALTER TABLE processing_jobs ADD COLUMN IF NOT EXISTS message TEXT;
+
 
 
 -- Processing jobs (tracks Video Editor jobs)
@@ -91,6 +88,11 @@ CREATE INDEX IF NOT EXISTS idx_channels_owner     ON channels(owner_id);
 CREATE INDEX IF NOT EXISTS idx_channels_visibility ON channels(visibility);
 CREATE INDEX IF NOT EXISTS idx_videos_channel     ON videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_subs_user          ON channel_subscriptions(user_id);
+
+-- Migration for existing databases
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS channel_id UUID REFERENCES channels(id) ON DELETE SET NULL;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS views INT NOT NULL DEFAULT 0;
+ALTER TABLE processing_jobs ADD COLUMN IF NOT EXISTS message TEXT;
 
 
 -- Static seed data synced with Keycloak realm-egs.json
