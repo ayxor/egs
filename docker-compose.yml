@@ -184,6 +184,10 @@ services:
   video-editor:
     build:
       context: ../video-editor
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
     networks:
       - services-net   # Só acessível pelo composer — sem acesso ao exterior
     environment:
@@ -265,8 +269,11 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: egs-cadvisor-1
+    command:
+      - '--housekeeping_interval=15s'
+      - '--max_housekeeping_interval=30s'
+      - '--docker_only=true'
     volumes:
-      - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
