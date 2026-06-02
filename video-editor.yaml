@@ -58,27 +58,6 @@ components:
           description: JSON-encoded array of operations to apply.
           example: '[{"type":"watermark","params":{"text":"UA","position":"bottom-right","opacity":0.8}}]'
 
-    JobUpsertRequest:
-      type: object
-      required: [src_url, dst_url, operations]
-      properties:
-        src_url:
-          type: string
-          description: HTTP URL from which the service fetches the source file.
-          example: https://storage/raw/abc123.mp4
-        dst_url:
-          type: string
-          description: HTTP URL to which the service uploads the processed file.
-          example: https://storage/processed/abc123.mp4
-        progress_url:
-          type: string
-          description: Optional callback URL for progress notifications.
-          example: https://composer/internal/jobs/progress
-        operations:
-          type: array
-          description: Ordered list of operations to apply.
-          items:
-            $ref: '#/components/schemas/JobOperation'
 
     JobCreated:
       type: object
@@ -154,21 +133,6 @@ components:
                   type: string
                 example: [text, position, opacity]
 
-    DatabaseStatus:
-      type: object
-      properties:
-        database:
-          type: string
-          example: sqlite
-        status:
-          type: string
-          example: ok
-        path:
-          type: string
-          example: video_editor.db
-        meta_entries:
-          type: integer
-          example: 2
 
     Error:
       type: object
@@ -182,25 +146,6 @@ components:
           example: unable to open database file
 
 paths:
-  /db/status:
-    get:
-      summary: Check database status
-      description: Returns status information for the service SQLite database.
-      responses:
-        '200':
-          description: Database status information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DatabaseStatus'
-        '401':
-          description: Missing or invalid API key
-        '500':
-          description: Database unavailable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /jobs:
     post:
@@ -229,12 +174,6 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Missing or invalid API key
-        '422':
-          description: Unknown or unsupported operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
 
   /jobs/operations:
     get:
@@ -265,67 +204,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/JobStatus'
-        '401':
-          description: Missing or invalid API key
-        '404':
-          description: Job not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-    put:
-      summary: Create or replace a processing job with a fixed id
-      description: >
-        Creates a new job with the provided job_id, or replaces an existing one.
-        This enables idempotent orchestration from upstream services.
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JobUpsertRequest'
-      responses:
-        '202':
-          description: Job accepted and started
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JobCreated'
-        '400':
-          description: Missing or invalid required fields
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '401':
-          description: Missing or invalid API key
-        '422':
-          description: Unknown or unsupported operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-
-    delete:
-      summary: Cancel a job
-      description: >
-        Cancels a queued or processing job. Terminal jobs remain unchanged.
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '204':
-          description: Job cancellation accepted
         '401':
           description: Missing or invalid API key
         '404':
