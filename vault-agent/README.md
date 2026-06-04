@@ -12,8 +12,8 @@ This keeps API keys out of the service images and out of the compose files.
 
 ## How It Works
 
-1. Vault is started in dev mode by the platform stack.
-2. The `vault-init` job seeds KV secrets and creates policies plus static tokens.
+1. Vault runs in production mode using a Raft storage backend with PVC persistence in Kubernetes.
+2. The `vault-unsealer` sidecar container automatically initializes, unseals, and bootstraps Vault (seeding KV secrets, policies, and static tokens).
 3. Each service pod or container gets an AppRole role ID and secret ID.
 4. Vault Agent authenticates with AppRole.
 5. Vault Agent renders the matching template into `/vault/secrets/*.json`.
@@ -65,10 +65,8 @@ Examples:
 
 ## Security Model
 
-This is a demo-grade secret flow, not a full production hardening story.
-
-- Vault runs in dev mode in the stack
-- Tokens are seeded by the `vault-init` job
+- Vault runs in production mode using a Raft storage backend with PVC persistence in Kubernetes
+- Tokens and secrets are seeded automatically by the `vault-unsealer` sidecar container
 - AppRole files are mounted into the agent environment
 - Policies are scoped per service so each agent only reads the secrets it needs
 
@@ -76,10 +74,10 @@ This is a demo-grade secret flow, not a full production hardening story.
 
 The Vault Agent configs are used alongside the main stack files under [k8s/manifests](../k8s/manifests/) and the compose-based demo stack in [docker-compose.yml](../docker-compose.yml).
 
-The matching bootstrap job is documented in [k8s/deployment_architecture.md](../k8s/deployment_architecture.md).
+The matching unsealer and bootstrapping is documented in [k8s/deployment_architecture.md](../k8s/deployment_architecture.md).
 
 ## Notes
 
 - These files are configuration only; they are not standalone services.
-- The agent templates should stay aligned with the keys created by `vault-init`.
+- The agent templates should stay aligned with the keys created by the unsealer.
 - If you add a new service secret, update both the Vault policy and the matching template.

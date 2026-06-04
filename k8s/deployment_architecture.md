@@ -84,14 +84,14 @@ flowchart TB
 
 To enforce security compliance, **no microservice holds hardcoded credentials** or database URLs. Configuration is dynamically retrieved from **HashiCorp Vault** (`vault:8200`).
 
-### 1. The Bootstrapping Flow
-* **Deployment:** Vault is deployed in dev-mode (`2-vault.yaml`) to serve key-value secrets.
-* **Initialization Job (`vault-init`):** A one-shot Kubernetes Batch Job runs a configuration script that:
-  1. Activates the Key-Value (KV-v2) secret engine at `secret/`.
-  2. Provisions API keys for the worker microservices under `secret/object-storage`, `secret/video-editor`, and `secret/notifications`.
-  3. Writes granular security access policies (e.g. `composer-policy` allowing read access only to relevant service keys).
-  4. Creates static scoped Vault access tokens (e.g., `token-composer`, `token-video-editor`) tied directly to their respective policies.
-* **Token Delivery:** These tokens are injected into their respective service pods from the Kubernetes `uastream-secrets` Secret.
+### 1. The Production-Grade Vault Lifecycle & Unsealer
+* **Deployment & Storage:** Vault is deployed in production mode (`2-vault.yaml`) with a `raft` storage backend and a dedicated `PersistentVolumeClaim` (`vault-data-claim`) mounted to `/vault/data` to persist secrets.
+* **Auto-Unsealer Sidecar:** Instead of a static one-shot initialization job, an auto-unsealer sidecar container (`vault-unsealer`) runs alongside the Vault server within the Vault deployment. This sidecar executes an idempotent loop:
+  1. Checks if Vault is initialized. If not, initializes Vault and saves the unseal keys and root token to a Kubernetes Secret (`vault-unseal-keys`).
+  2. If Vault is sealed, retrieves the unseal key from `vault-unseal-keys` and unseals Vault automatically.
+  3. Boots the KV-v2 secret engine at `secret/`, provisions API keys for the worker microservices under `secret/object-storage`, `secret/video-editor`, and `secret/notifications`.
+  4. Writes granular security access policies (e.g. `composer-policy` allowing read access only to relevant service keys).
+* **Token Delivery:** The scoped static Vault access tokens created during bootstrapping are injected into their respective service pods from the Kubernetes `uastream-secrets` Secret.
 
 ---
 
@@ -155,12 +155,12 @@ The deployment manifests under `k8s/manifests/` are grouped sequentially for cle
 
 | Manifest Filename | Kubernetes Resources | Description |
 | :--- | :--- | :--- |
-| **`secrets-template.yaml`** | `Secret` | Placeholder values for the global `uastream-secrets` credentials map. |
+| **`secrets-template.yaml`** | `Secret` | Centralized configurations and credential variables (including database, SMTP, and Grafana credentials) for `uastream-secrets`. |
 | **`1-databases.yaml`** | `StatefulSet`, `Service` | Provisions stateful PostgreSQL instances for the Composer (`db`) and Keycloak (`kc-db`) with RWO Persistent Volumes. |
-| **`2-vault.yaml`** | `Deployment`, `Service`, `Job`, `ConfigMap` | Deploys HashiCorp Vault and triggers a bootstrapping job (`vault-init.sh`) to seed keys. |
+| **`2-vault.yaml`** | `Deployment`, `Service`, `PersistentVolumeClaim`, `ConfigMap`, `Role`, `RoleBinding`, `ServiceAccount` | Deploys HashiCorp Vault in production mode using a Raft storage backend, PVC persistence, and a self-healing auto-unsealer sidecar container. |
 | **`3-keycloak.yaml`** | `Deployment`, `Service`, `ConfigMap` | Provisions Keycloak, imports the real `egs` OIDC realm, and mounts the custom `uastream` theme. |
 | **`4-services.yaml`** | `Deployment`, `Service`, `PersistentVolumeClaim` | Launches Object Storage (with local RWO volume), Video Editor (with emptyDir volume), and Notifications (with local persistent SQLite volume). |
 | **`5-composer.yaml`** | `Deployment`, `Service`, `Ingress` | Deploys the main Composer gateway and Traefik ingress routing rules. |
 | **`6-monitoring.yaml`** | `Deployment`, `Service`, `Ingress`, `ConfigMap` | Provisions Prometheus and Grafana (preconfigured with the 7 system dashboards). |
-| **`7-rbac.yaml`** | `Role`, `RoleBinding` | Grants metrics reading permissions to the default service account. |
+| **`7-rbac.yaml`** | `Role`, `RoleBinding`, `ServiceAccount` | Creates the dedicated `prometheus-sa` ServiceAccount and binds it to metrics-reading permissions. |
 | **`8-network-policies.yaml`** | `NetworkPolicy` | Establishes Zero-Trust network segmentation across all pods. |
