@@ -1,11 +1,12 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: db
   namespace: tenant-grupo8-egs-deti-ua-pt
   labels:
     app: db
 spec:
+  serviceName: db
   replicas: 1
   selector:
     matchLabels:
@@ -25,8 +26,22 @@ spec:
               value: composer
             - name: POSTGRES_DB
               value: composer
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
+              name: dbport
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: db-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
@@ -41,13 +56,14 @@ spec:
     app: db
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: kc-db
   namespace: tenant-grupo8-egs-deti-ua-pt
   labels:
     app: kc-db
 spec:
+  serviceName: kc-db
   replicas: 1
   selector:
     matchLabels:
@@ -67,8 +83,22 @@ spec:
               value: keycloak
             - name: POSTGRES_DB
               value: keycloak
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
+              name: dbport
+          volumeMounts:
+            - name: kc-db-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: kc-db-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
 ---
 apiVersion: v1
 kind: Service

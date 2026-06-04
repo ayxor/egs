@@ -32,41 +32,71 @@ The platform follows a pull-based orchestration model:
 7. Composer pulls results from worker services instead of relying on callbacks from them.
 
 ```mermaid
+%%{init: {'theme': 'neutral'}}%%
 flowchart TB
-    Browser[Browser / Client]
-    Traefik[Traefik Reverse Proxy]
-
-    subgraph Public[Public network]
-        Composer[Composer]
-        Keycloak[Keycloak IAM]
-        Storage[Object Storage]
-        Notify[Notifications]
+    subgraph External[" "]
+        direction TB
+        Browser[Browser / Client]
+        Ingress[Traefik Ingress Controller]
+        Browser -->|HTTP| Ingress
     end
 
-    subgraph Internal[Internal networks]
-        Editor[Video Editor]
-        Vault[Vault]
-        ComposerDB[(Composer PostgreSQL)]
-        KCDB[(Keycloak PostgreSQL)]
+    subgraph Namespace["Kubernetes Namespace (tenant-grupo8-egs-deti-ua-pt)"]
+        direction TB
+
+        subgraph PublicZone["Exposed Services (Ingress Route Allowed)"]
+            direction LR
+            Composer[Composer App]
+            Keycloak[Keycloak IAM]
+            Storage[Object Storage]
+            Notify[Notifications]
+        end
+
+        subgraph DBZone["Database Layer (NetworkPolicy: db-isolation)"]
+            direction LR
+            ComposerDB[(Composer PostgreSQL)]
+            KCDB[(Keycloak PostgreSQL)]
+        end
+
+        subgraph InternalZone["Internal Services (NetworkPolicy: services-net)"]
+            direction LR
+            Editor[Video Editor]
+            Vault[Vault]
+        end
     end
 
-    Browser --> Traefik
-    Traefik --> Composer
-    Traefik --> Keycloak
-    Traefik --> Storage
-    Traefik --> Notify
+    Ingress -->|Route: Host| Composer
+    Ingress -->|Route: /realms, /resources, /js| Keycloak
+    Ingress -->|Route: /objects| Storage
+    Ingress -->|Route: /notifications/track| Notify
 
-    Composer <--> Keycloak
-    Composer <--> ComposerDB
-    Composer <--> Storage
-    Composer --> Editor
-    Composer --> Notify
+    Composer -->|NetworkPolicy: backend-net| Keycloak
+    Composer -->|NetworkPolicy: composer-db-net| ComposerDB
+    Composer -->|NetworkPolicy: services-net| Storage
+    Composer -->|NetworkPolicy: services-net| Editor
+    Composer -->|NetworkPolicy: services-net| Notify
 
-    Keycloak <--> KCDB
-    Vault -.-> Composer
-    Vault -.-> Storage
-    Vault -.-> Editor
-    Vault -.-> Notify
+    Keycloak -->|NetworkPolicy: keycloak-db-net| KCDB
+
+    Composer -.->|NetworkPolicy: secrets-access| Vault
+    Storage -.->|NetworkPolicy: secrets-access| Vault
+    Editor -.->|NetworkPolicy: secrets-access| Vault
+    Notify -.->|NetworkPolicy: secrets-access| Vault
+
+    %% Invisible layout constraints to force Internal Services below Exposed Services
+    Notify ~~~ Editor
+    Storage ~~~ Editor
+
+    %% Explicit White Mode Styles (Overrides viewer presets)
+    classDef whiteNode fill:#ffffff,stroke:#1c140d,stroke-width:1.5px,color:#1c140d;
+    classDef zone fill:#ffffff,stroke:#6a5e50,stroke-width:1.5px,stroke-dasharray: 4 4,color:#1c140d;
+    classDef nsZone fill:#ffffff,stroke:#1c140d,stroke-width:2px,color:#1c140d;
+    classDef extZone fill:none,stroke:none;
+
+    class Browser,Ingress,Composer,Keycloak,Storage,Notify,Editor,Vault,ComposerDB,KCDB whiteNode;
+    class PublicZone,InternalZone,DBZone zone;
+    class Namespace nsZone;
+    class External extZone;
 ```
 
 ## Request Flow

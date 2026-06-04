@@ -32,8 +32,17 @@ spec:
                 secretKeyRef:
                   name: uastream-secrets
                   key: VAULT_TOKEN
+            - name: OBJECT_STORAGE_DATA_DIR
+              value: /data
           ports:
             - containerPort: 8080
+          volumeMounts:
+            - name: object-storage-data
+              mountPath: /data
+      volumes:
+        - name: object-storage-data
+          persistentVolumeClaim:
+            claimName: object-storage-claim
 ---
 apiVersion: v1
 kind: Service
@@ -82,6 +91,13 @@ spec:
                   key: VAULT_TOKEN
           ports:
             - containerPort: 8080
+          volumeMounts:
+            - name: scratch-volume
+              mountPath: /tmp
+      volumes:
+        - name: scratch-volume
+          emptyDir:
+            sizeLimit: 10Gi
 ---
 apiVersion: v1
 kind: Service
@@ -125,7 +141,7 @@ spec:
             - name: NOTIFICATIONS_BASE_URL
               value: http://notifications:8080
             - name: DATABASE_URL
-              value: sqlite:////app/notifications.db
+              value: sqlite:////data/notifications.db
             - name: VAULT_ADDR
               value: http://vault:8200
             - name: VAULT_TOKEN
@@ -149,6 +165,13 @@ spec:
               value: "false"
           ports:
             - containerPort: 8080
+          volumeMounts:
+            - name: notifications-data
+              mountPath: /data
+      volumes:
+        - name: notifications-data
+          persistentVolumeClaim:
+            claimName: notifications-db-claim
 ---
 apiVersion: v1
 kind: Service
@@ -161,3 +184,27 @@ spec:
       targetPort: 8080
   selector:
     app: notifications
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: notifications-db-claim
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: object-storage-claim
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

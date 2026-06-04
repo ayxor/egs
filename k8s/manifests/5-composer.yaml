@@ -126,7 +126,7 @@ spec:
                 name: object-storage
                 port:
                   number: 8080
-          - path: /notifications
+          - path: /notifications/track
             pathType: Prefix
             backend:
               service:

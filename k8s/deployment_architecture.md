@@ -10,35 +10,72 @@ The live manifests have been cleaned of internal cluster metadata and are stored
 
 UAStream is designed around a strictly decoupled, **service-oriented orchestration pattern**. Communication is strictly top-down to enforce service boundaries, preventing worker nodes from calling each other or sharing states.
 
-```text
-                                  [ Public Web Traffic ]
-                                            │
-                                            ▼
-                                   [ Traefik Ingress ]
-                                            │
-               ┌────────────────────────────┼────────────────────────────┐
-               │ (HTTP / realms, resources) │ (HTTP / objects)           │ (HTTP / notifications)
-               ▼                            ▼                            ▼
-         ┌───────────┐                ┌──────────────┐             ┌───────────────┐
-         │ Keycloak  │                │ Obj Storage  │             │ Notifications │
-         └─────┬─────┘                └──────┬───────┘             └───────┬───────┘
-               │ (DB)                        │ (KV Secrets)                │ (KV Secrets)
-               ▼                             ▼                             ▼
-         ┌───────────┐                ┌──────────────┐             ┌───────────────┐
-         │   kc-db   │ ┌─────────────►│    Vault     │◄────────────┤  video-editor │
-         │ (Postgres)│ │              └──────────────┘             └───────┬───────┘
-               ▲       │                     ▲                             │
-               │       │ (Tokens)            │ (KV Secrets)                │ (Isolated)
-         ┌─────┴───────┴──────┐              │                             ▼
-         │      Composer      ├──────────────┘                       [ FFmpeg Job ]
-         │ (Central Gateway)  │
-         └─────────┬──────────┘
-                   │ (DB)
-                   ▼
-         ┌──────────────────┐
-         │        db        │
-         │ (Composer-Postgr)│
-         └──────────────────┘
+```mermaid
+%%{init: {'theme': 'neutral'}}%%
+flowchart TB
+    subgraph External[" "]
+        direction TB
+        Browser[Browser / Client]
+        Ingress[Traefik Ingress Controller]
+        Browser -->|HTTP| Ingress
+    end
+
+    subgraph Namespace["Kubernetes Namespace (tenant-grupo8-egs-deti-ua-pt)"]
+        direction TB
+
+        subgraph PublicZone["Exposed Services (Ingress Route Allowed)"]
+            direction LR
+            Composer[Composer App]
+            Keycloak[Keycloak IAM]
+            Storage[Object Storage]
+            Notify[Notifications]
+        end
+
+        subgraph DBZone["Database Layer (NetworkPolicy: db-isolation)"]
+            direction LR
+            ComposerDB[(Composer PostgreSQL)]
+            KCDB[(Keycloak PostgreSQL)]
+        end
+
+        subgraph InternalZone["Internal Services (NetworkPolicy: services-net)"]
+            direction LR
+            Editor[Video Editor]
+            Vault[Vault]
+        end
+    end
+
+    Ingress -->|Route: Host| Composer
+    Ingress -->|Route: /realms, /resources, /js| Keycloak
+    Ingress -->|Route: /objects| Storage
+    Ingress -->|Route: /notifications/track| Notify
+
+    Composer -->|NetworkPolicy: backend-net| Keycloak
+    Composer -->|NetworkPolicy: composer-db-net| ComposerDB
+    Composer -->|NetworkPolicy: services-net| Storage
+    Composer -->|NetworkPolicy: services-net| Editor
+    Composer -->|NetworkPolicy: services-net| Notify
+
+    Keycloak -->|NetworkPolicy: keycloak-db-net| KCDB
+
+    Composer -.->|NetworkPolicy: secrets-access| Vault
+    Storage -.->|NetworkPolicy: secrets-access| Vault
+    Editor -.->|NetworkPolicy: secrets-access| Vault
+    Notify -.->|NetworkPolicy: secrets-access| Vault
+
+    %% Invisible layout constraints to force Internal Services below Exposed Services
+    Notify ~~~ Editor
+    Storage ~~~ Editor
+
+    %% Explicit White Mode Styles (Overrides viewer presets)
+    classDef whiteNode fill:#ffffff,stroke:#1c140d,stroke-width:1.5px,color:#1c140d;
+    classDef zone fill:#ffffff,stroke:#6a5e50,stroke-width:1.5px,stroke-dasharray: 4 4,color:#1c140d;
+    classDef nsZone fill:#ffffff,stroke:#1c140d,stroke-width:2px,color:#1c140d;
+    classDef extZone fill:none,stroke:none;
+
+    class Browser,Ingress,Composer,Keycloak,Storage,Notify,Editor,Vault,ComposerDB,KCDB whiteNode;
+    class PublicZone,InternalZone,DBZone zone;
+    class Namespace nsZone;
+    class External extZone;
 ```
 
 ---
@@ -55,8 +92,6 @@ To enforce security compliance, **no microservice holds hardcoded credentials** 
   3. Writes granular security access policies (e.g. `composer-policy` allowing read access only to relevant service keys).
   4. Creates static scoped Vault access tokens (e.g., `token-composer`, `token-video-editor`) tied directly to their respective policies.
 * **Token Delivery:** These tokens are injected into their respective service pods from the Kubernetes `uastream-secrets` Secret.
-
-* **Vault Agent Sidecars:** The compose-based demo stack also includes AppRole-driven Vault Agent configs under [../vault-agent](../vault-agent/README.md). They render service-specific JSON files such as `/vault/secrets/composer.json` and `/vault/secrets/video-editor.json` from the same Vault KV paths used by the bootstrap job. This is a documentation companion to the Kubernetes flow rather than a separate cluster deployment object.
 
 ---
 
@@ -84,7 +119,7 @@ Keycloak's custom login portal uses a custom branding theme named `uastream`. To
 Traffic entering `http://uastream.com` hits the cluster's **Traefik Ingress Controller**, which evaluates the path prefixes and routes them directly to the private cluster services:
 * **`/realms`**, **`/resources`**, **`/js`** ➡️ `keycloak:8080` (Direct auth redirects)
 * **`/objects`** ➡️ `object-storage:8080` (Direct video stream chunking)
-* **`/notifications`** ➡️ `notifications:8080` (Email template tracking)
+* **`/notifications/track`** ➡️ `notifications:8080` (Email template tracking pixel)
 * **`/`** ➡️ `composer:8080` (Main app UI and API orchestrator)
 
 ### 2. Microservice Descriptions
@@ -121,9 +156,11 @@ The deployment manifests under `k8s/manifests/` are grouped sequentially for cle
 | Manifest Filename | Kubernetes Resources | Description |
 | :--- | :--- | :--- |
 | **`secrets-template.yaml`** | `Secret` | Placeholder values for the global `uastream-secrets` credentials map. |
-| **`1-databases.yaml`** | `Deployment`, `Service` | Provisions PostgreSQL instances for the Composer (`db`) and Keycloak (`kc-db`). |
+| **`1-databases.yaml`** | `StatefulSet`, `Service` | Provisions stateful PostgreSQL instances for the Composer (`db`) and Keycloak (`kc-db`) with RWO Persistent Volumes. |
 | **`2-vault.yaml`** | `Deployment`, `Service`, `Job`, `ConfigMap` | Deploys HashiCorp Vault and triggers a bootstrapping job (`vault-init.sh`) to seed keys. |
 | **`3-keycloak.yaml`** | `Deployment`, `Service`, `ConfigMap` | Provisions Keycloak, imports the real `egs` OIDC realm, and mounts the custom `uastream` theme. |
-| **`4-services.yaml`** | `Deployment`, `Service` | Launches Object Storage, Video Editor, and Notifications services (with active SMTP credentials). |
+| **`4-services.yaml`** | `Deployment`, `Service`, `PersistentVolumeClaim` | Launches Object Storage (with local RWO volume), Video Editor (with emptyDir volume), and Notifications (with local persistent SQLite volume). |
 | **`5-composer.yaml`** | `Deployment`, `Service`, `Ingress` | Deploys the main Composer gateway and Traefik ingress routing rules. |
 | **`6-monitoring.yaml`** | `Deployment`, `Service`, `Ingress`, `ConfigMap` | Provisions Prometheus and Grafana (preconfigured with the 7 system dashboards). |
+| **`7-rbac.yaml`** | `Role`, `RoleBinding` | Grants metrics reading permissions to the default service account. |
+| **`8-network-policies.yaml`** | `NetworkPolicy` | Establishes Zero-Trust network segmentation across all pods. |
