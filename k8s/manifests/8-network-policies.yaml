@@ -108,6 +108,15 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    - from:
+        - podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: 7800
+        - protocol: TCP
+          port: 57800
   egress:
     - ports:
         - protocol: UDP
@@ -128,6 +137,15 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
+    - to:
+        - podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: 7800
+        - protocol: TCP
+          port: 57800
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

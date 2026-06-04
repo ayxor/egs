@@ -564,8 +564,11 @@ spec:
           image: quay.io/keycloak/keycloak:26.1
           command:
             - /opt/keycloak/bin/kc.sh
-            - start-dev
+            - start
             - --import-realm
+            - --http-enabled=true
+            - --hostname-strict=false
+            - --proxy-headers=xforwarded
           env:
             - name: KEYCLOAK_ADMIN
               value: admin
