@@ -72,6 +72,8 @@ metadata:
   namespace: tenant-grupo8-egs-deti-ua-pt
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: prometheus
@@ -81,6 +83,8 @@ spec:
         app: prometheus
     spec:
       serviceAccountName: prometheus-sa
+      securityContext:
+        fsGroup: 65534
       containers:
         - name: prometheus
           image: prom/prometheus:latest
@@ -89,10 +93,15 @@ spec:
           volumeMounts:
             - name: config-volume
               mountPath: /etc/prometheus/
+            - name: prometheus-data
+              mountPath: /prometheus
       volumes:
         - name: config-volume
           configMap:
             name: prometheus-config
+        - name: prometheus-data
+          persistentVolumeClaim:
+            claimName: prometheus-data-claim
 ---
 apiVersion: v1
 kind: Service
@@ -113,6 +122,8 @@ metadata:
   namespace: tenant-grupo8-egs-deti-ua-pt
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana
@@ -121,6 +132,8 @@ spec:
       labels:
         app: grafana
     spec:
+      securityContext:
+        fsGroup: 472
       containers:
         - name: grafana
           image: grafana/grafana:latest
@@ -141,6 +154,8 @@ spec:
               mountPath: /etc/grafana/provisioning/dashboards/
             - name: dashboard-files-volume
               mountPath: /etc/grafana/provisioning/dashboards/files/
+            - name: grafana-data
+              mountPath: /var/lib/grafana
       volumes:
         - name: datasources-volume
           configMap:
@@ -151,6 +166,9 @@ spec:
         - name: dashboard-files-volume
           configMap:
             name: grafana-dashboard-files
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-data-claim
 ---
 apiVersion: v1
 kind: Service
@@ -182,3 +200,27 @@ spec:
                 name: grafana
                 port:
                   number: 3000
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data-claim
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data-claim
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
