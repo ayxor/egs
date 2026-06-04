@@ -156,6 +156,13 @@ The service is built and started from the `object-storage` branch through the `m
 - `uastream.com` is the public hostname for the stack, but object storage itself is an internal service.
 - Range requests are the main mechanism for direct playback and chunked delivery.
 
+### Production Scaling & Replicas (ReadWriteOnce Constraints)
+In the current Kubernetes deployment, the `object-storage` service runs as a single replica (`replicas: 1`) using a `ReadWriteOnce` (RWO) Persistent Volume.
+* **Why it is not scaled to >1 replica:**
+  1. A `ReadWriteOnce` volume can only be mounted to a single node. Setting `replicas: 2` would trigger a `Multi-Attach error` when the pods are scheduled on different nodes.
+  2. Changing the volume type to `ReadWriteMany` (RWX) to scale the service would introduce network filesystem (NFS) performance overhead and latency during high-throughput range-request video streaming chunking.
+* **Production Path:** To scale this service in a real production-grade deployment, the filesystem storage backend should be replaced with an S3-compatible API backend (like AWS S3 or a MinIO cluster). This removes the need for local persistent volumes, making the service completely stateless and infinitely scalable.
+
 ---
 
 ## Diagrams
