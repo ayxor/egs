@@ -113,6 +113,9 @@ kind: Service
 metadata:
   name: video-editor
   namespace: tenant-grupo8-egs-deti-ua-pt
+  annotations:
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "video_editor_affinity"
 spec:
   ports:
     - port: 8080
