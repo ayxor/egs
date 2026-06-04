@@ -643,6 +643,9 @@ kind: Service
 metadata:
   name: keycloak
   namespace: tenant-grupo8-egs-deti-ua-pt
+  annotations:
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "keycloak_affinity"
 spec:
   ports:
     - name: http
