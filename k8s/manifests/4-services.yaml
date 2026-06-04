@@ -7,6 +7,8 @@ metadata:
     app: object-storage
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: object-storage
@@ -120,6 +122,8 @@ metadata:
     app: notifications
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: notifications
@@ -154,11 +158,20 @@ spec:
             - name: SMTP_PORT
               value: "587"
             - name: SMTP_USER
-              value: "egsnotificationsservice@gmail.com"
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: SMTP_USER
             - name: SMTP_PASSWORD
-              value: "thockzhzntwjcaxe"
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: SMTP_PASSWORD
             - name: SMTP_FROM
-              value: "egsnotificationsservice@gmail.com"
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: SMTP_FROM
             - name: SMTP_USE_TLS
               value: "true"
             - name: SMTP_USE_SSL
