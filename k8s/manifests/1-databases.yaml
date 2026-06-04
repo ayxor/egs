@@ -21,11 +21,20 @@ spec:
           image: postgres:16-alpine
           env:
             - name: POSTGRES_USER
-              value: composer
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_COMPOSER_USER
             - name: POSTGRES_PASSWORD
-              value: composer
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_COMPOSER_PASSWORD
             - name: POSTGRES_DB
-              value: composer
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_COMPOSER_DB
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:
@@ -78,11 +87,20 @@ spec:
           image: postgres:16-alpine
           env:
             - name: POSTGRES_USER
-              value: keycloak
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_KEYCLOAK_USER
             - name: POSTGRES_PASSWORD
-              value: keycloak
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_KEYCLOAK_PASSWORD
             - name: POSTGRES_DB
-              value: keycloak
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_KEYCLOAK_DB
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:

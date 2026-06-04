@@ -1,42 +1,190 @@
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-unsealer-sa
+  namespace: tenant-grupo8-egs-deti-ua-pt
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-secret-manager
+  namespace: tenant-grupo8-egs-deti-ua-pt
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-unsealer-rolebinding
+  namespace: tenant-grupo8-egs-deti-ua-pt
+subjects:
+  - kind: ServiceAccount
+    name: vault-unsealer-sa
+    namespace: tenant-grupo8-egs-deti-ua-pt
+roleRef:
+  kind: Role
+  name: vault-secret-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vault-data-claim
+  namespace: tenant-grupo8-egs-deti-ua-pt
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vault-init
+  name: vault-config
   namespace: tenant-grupo8-egs-deti-ua-pt
 data:
-  vault_init.sh: |
+  vault.hcl: |
+    storage "raft" {
+      path    = "/vault/data"
+      node_id = "vault-0"
+    }
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = "true"
+    }
+    api_addr = "http://127.0.0.1:8200"
+    cluster_addr = "http://127.0.0.1:8201"
+    disable_mlock = true
+    ui = true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-unsealer-script
+  namespace: tenant-grupo8-egs-deti-ua-pt
+data:
+  unseal.sh: |
     #!/bin/sh
-    echo "Waiting for Vault to start..."
-    until wget -q -O - http://vault:8200/v1/sys/health > /dev/null; do
-      sleep 1
+
+    # Install curl and jq
+    apk add --no-cache curl jq
+
+    APISERVER="https://kubernetes.default.svc"
+    SERVICEACCOUNT="/var/run/secrets/kubernetes.io/serviceaccount"
+    NAMESPACE=$(cat ${SERVICEACCOUNT}/namespace)
+    TOKEN=$(cat ${SERVICEACCOUNT}/token)
+
+    VAULT_ADDR="http://127.0.0.1:8200"
+
+    echo "Starting Vault Auto-Unsealer Loop..."
+
+    while true; do
+      # Check initialization status
+      INIT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 2 ${VAULT_ADDR}/v1/sys/init || echo "failed")
+      if [ "$INIT_STATUS" = "200" ]; then
+        # Check if initialized
+        IS_INIT=$(curl -s -m 2 ${VAULT_ADDR}/v1/sys/init | jq -r '.initialized')
+        
+        if [ "$IS_INIT" = "false" ]; then
+          echo "Vault is not initialized. Initializing now..."
+          INIT_RESP=$(curl -s -X PUT -d '{"secret_shares":1,"secret_threshold":1}' ${VAULT_ADDR}/v1/sys/init)
+          
+          # Extract unseal key and root token
+          UNSEAL_KEY=$(echo "$INIT_RESP" | jq -r '.keys_base64[0]')
+          ROOT_TOKEN=$(echo "$INIT_RESP" | jq -r '.root_token')
+          
+          if [ -n "$UNSEAL_KEY" ] && [ -n "$ROOT_TOKEN" ] && [ "$UNSEAL_KEY" != "null" ] && [ "$ROOT_TOKEN" != "null" ]; then
+            echo "Vault initialized. Storing keys in Kubernetes Secret..."
+            
+            # Delete existing secret if any
+            curl -s -k -H "Authorization: Bearer ${TOKEN}" \
+              -X DELETE \
+              ${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets/vault-unseal-keys > /dev/null 2>&1 || true
+              
+            # Create new secret
+            CREATE_RESP=$(curl -s -k -H "Authorization: Bearer ${TOKEN}" \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"metadata\":{\"name\":\"vault-unseal-keys\",\"namespace\":\"${NAMESPACE}\"},\"type\":\"Opaque\",\"stringData\":{\"vault-unseal-key\":\"${UNSEAL_KEY}\",\"vault-root-token\":\"${ROOT_TOKEN}\"}}" \
+              ${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets)
+              
+            echo "Secret stored."
+          else
+            echo "Failed to parse init response: $INIT_RESP"
+          fi
+        fi
+        
+        # Check if sealed
+        SEAL_STATUS=$(curl -s -m 2 ${VAULT_ADDR}/v1/sys/seal-status)
+        IS_SEALED=$(echo "$SEAL_STATUS" | jq -r '.sealed')
+        
+        if [ "$IS_SEALED" = "true" ]; then
+          echo "Vault is sealed. Retrieving unseal key from Kubernetes Secret..."
+          
+          # Retrieve secret
+          SECRET_RESP=$(curl -s -k -H "Authorization: Bearer ${TOKEN}" \
+            ${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets/vault-unseal-keys)
+          
+          # Extract the base64 key
+          B64_KEY=$(echo "$SECRET_RESP" | jq -r '.data["vault-unseal-key"]')
+          
+          if [ -n "$B64_KEY" ] && [ "$B64_KEY" != "null" ]; then
+            UNSEAL_KEY=$(echo "$B64_KEY" | base64 -d)
+            
+            echo "Unsealing Vault..."
+            curl -s -X PUT -d "{\"key\":\"${UNSEAL_KEY}\"}" ${VAULT_ADDR}/v1/sys/unseal > /dev/null
+            echo "Vault unsealed."
+          else
+            echo "Could not find vault-unseal-key in secret vault-unseal-keys. Response: $SECRET_RESP"
+          fi
+        fi
+
+        # Check configuration status
+        # Retrieve secret response again to get root token
+        SECRET_RESP=$(curl -s -k -H "Authorization: Bearer ${TOKEN}" \
+          ${APISERVER}/api/v1/namespaces/${NAMESPACE}/secrets/vault-unseal-keys)
+        B64_TOKEN=$(echo "$SECRET_RESP" | jq -r '.data["vault-root-token"]')
+        
+        if [ -n "$B64_TOKEN" ] && [ "$B64_TOKEN" != "null" ]; then
+          ROOT_TOKEN=$(echo "$B64_TOKEN" | base64 -d)
+          
+          # Check if policy is already written
+          POL_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -m 2 -H "X-Vault-Token: ${ROOT_TOKEN}" ${VAULT_ADDR}/v1/sys/policies/acl/composer-policy)
+          if [ "$POL_STATUS" != "200" ]; then
+            echo "Bootstrapping Vault secrets and policies..."
+            
+            # Enable kv-v2
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"type":"kv","options":{"version":"2"}}' ${VAULT_ADDR}/v1/sys/mounts/secret > /dev/null 2>&1 || true
+            
+            # Put API keys
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"data":{"api_key":"stub-api-key"}}' ${VAULT_ADDR}/v1/secret/data/object-storage > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"data":{"api_key":"stub-api-key"}}' ${VAULT_ADDR}/v1/secret/data/video-editor > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"data":{"api_key":"stub-api-key"}}' ${VAULT_ADDR}/v1/secret/data/notifications > /dev/null
+            
+            # Write policies
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X PUT -d '{"policy":"path \"secret/data/object-storage\" { capabilities = [\"read\"] }\npath \"secret/data/video-editor\" { capabilities = [\"read\"] }\npath \"secret/data/notifications\" { capabilities = [\"read\"] }"}' ${VAULT_ADDR}/v1/sys/policies/acl/composer-policy > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X PUT -d '{"policy":"path \"secret/data/video-editor\" { capabilities = [\"read\"] }\npath \"secret/data/object-storage\" { capabilities = [\"read\"] }"}' ${VAULT_ADDR}/v1/sys/policies/acl/video-editor-policy > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X PUT -d '{"policy":"path \"secret/data/object-storage\" { capabilities = [\"read\"] }"}' ${VAULT_ADDR}/v1/sys/policies/acl/object-storage-policy > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X PUT -d '{"policy":"path \"secret/data/notifications\" { capabilities = [\"read\"] }"}' ${VAULT_ADDR}/v1/sys/policies/acl/notifications-policy > /dev/null
+            
+            # Create tokens
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"id":"token-composer","policies":["composer-policy"]}' ${VAULT_ADDR}/v1/auth/token/create > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"id":"token-video-editor","policies":["video-editor-policy"]}' ${VAULT_ADDR}/v1/auth/token/create > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"id":"token-object-storage","policies":["object-storage-policy"]}' ${VAULT_ADDR}/v1/auth/token/create > /dev/null
+            curl -s -H "X-Vault-Token: ${ROOT_TOKEN}" -X POST -d '{"id":"token-notifications","policies":["notifications-policy"]}' ${VAULT_ADDR}/v1/auth/token/create > /dev/null
+            
+            echo "Vault configuration complete."
+          fi
+        fi
+      else
+        echo "Vault health check returned status: $INIT_STATUS. Waiting for server..."
+      fi
+
+      sleep 15
     done
-    echo "Vault is up. Configuring..."
-    export VAULT_ADDR='http://vault:8200'
-    export VAULT_TOKEN='root'
-    vault secrets enable -path=secret kv-v2 || true
-    vault kv put secret/object-storage api_key="stub-api-key"
-    vault kv put secret/video-editor api_key="stub-api-key"
-    vault kv put secret/notifications api_key="stub-api-key"
-    cat <<EOF | vault policy write composer-policy -
-    path "secret/data/object-storage" { capabilities = ["read"] }
-    path "secret/data/video-editor" { capabilities = ["read"] }
-    path "secret/data/notifications" { capabilities = ["read"] }
-    EOF
-    cat <<EOF | vault policy write video-editor-policy -
-    path "secret/data/video-editor" { capabilities = ["read"] }
-    path "secret/data/object-storage" { capabilities = ["read"] }
-    EOF
-    cat <<EOF | vault policy write object-storage-policy -
-    path "secret/data/object-storage" { capabilities = ["read"] }
-    EOF
-    cat <<EOF | vault policy write notifications-policy -
-    path "secret/data/notifications" { capabilities = ["read"] }
-    EOF
-    vault token create -id="token-composer" -policy="composer-policy"
-    vault token create -id="token-video-editor" -policy="video-editor-policy"
-    vault token create -id="token-object-storage" -policy="object-storage-policy"
-    vault token create -id="token-notifications" -policy="notifications-policy"
-    echo "Vault initialization complete!"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -47,6 +195,8 @@ metadata:
     app: vault
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: vault
@@ -55,28 +205,51 @@ spec:
       labels:
         app: vault
     spec:
+      serviceAccountName: vault-unsealer-sa
       securityContext:
-        fsGroup: 1000
+        fsGroup: 100
       containers:
         - name: vault
           image: hashicorp/vault:latest
           command:
             - vault
             - server
-            - -dev
-          env:
-            - name: VAULT_DEV_ROOT_TOKEN_ID
-              value: root
-            - name: VAULT_DEV_LISTEN_ADDRESS
-              value: 0.0.0.0:8200
-            - name: VAULT_SKIP_MLOCK
-              value: "true"
+            - -config=/vault/config/vault.hcl
           ports:
             - containerPort: 8200
+              name: api
           securityContext:
             capabilities:
               add:
                 - IPC_LOCK
+          volumeMounts:
+            - name: vault-config
+              mountPath: /vault/config
+            - name: vault-data
+              mountPath: /vault/data
+        - name: vault-unsealer
+          image: alpine:latest
+          command:
+            - /bin/sh
+            - /unsealer/unseal.sh
+          env:
+            - name: VAULT_ADDR
+              value: http://127.0.0.1:8200
+          volumeMounts:
+            - name: vault-unsealer-script
+              mountPath: /unsealer/unseal.sh
+              subPath: unseal.sh
+      volumes:
+        - name: vault-config
+          configMap:
+            name: vault-config
+        - name: vault-data
+          persistentVolumeClaim:
+            claimName: vault-data-claim
+        - name: vault-unsealer-script
+          configMap:
+            name: vault-unsealer-script
+            defaultMode: 493
 ---
 apiVersion: v1
 kind: Service
@@ -89,28 +262,3 @@ spec:
       targetPort: 8200
   selector:
     app: vault
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: vault-init
-  namespace: tenant-grupo8-egs-deti-ua-pt
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: vault-init
-          image: hashicorp/vault:latest
-          command:
-            - /bin/sh
-            - /vault_init.sh
-          volumeMounts:
-            - name: vault-init-volume
-              mountPath: /vault_init.sh
-              subPath: vault_init.sh
-      volumes:
-        - name: vault-init-volume
-          configMap:
-            name: vault-init
-            defaultMode: 493

@@ -158,6 +158,15 @@ spec:
         - protocol: TCP
           port: 53
     - to:
+        - namespaceSelector: {}
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    - to:
         - podSelector:
             matchLabels:
               app: db

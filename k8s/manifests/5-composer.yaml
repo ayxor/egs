@@ -28,7 +28,10 @@ spec:
           imagePullPolicy: Always
           env:
             - name: DATABASE_URL
-              value: postgresql://composer:composer@db:5432/composer
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_COMPOSER_DATABASE_URL
             - name: KEYCLOAK_URL
               value: http://keycloak:8080
             - name: KEYCLOAK_PUBLIC_URL

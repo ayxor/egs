@@ -579,7 +579,10 @@ spec:
             - name: KC_DB_URL
               value: jdbc:postgresql://kc-db:5432/keycloak
             - name: KC_DB_USERNAME
-              value: keycloak
+              valueFrom:
+                secretKeyRef:
+                  name: uastream-secrets
+                  key: POSTGRES_KEYCLOAK_USER
             - name: KC_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
