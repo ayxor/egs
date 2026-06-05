@@ -55,9 +55,9 @@ Authenticate your local `kubectl` command-line tool with the live cluster using 
    ```bash
    mkdir -p ~/.kube
    ```
-2. Copy your teammate's kubeconfig yaml directly to the default config file location:
+2. Copy the kubeconfig yaml to the default config file location:
    ```bash
-   cp -vf /home/joaquima/egs/k8s/tenant-grupo8-egs-deti-ua-pt-kubeconfig(2).yaml ~/.kube/config
+   cp -vf /path/to/tenant-grupo8-egs-deti-ua-pt-kubeconfig.yaml ~/.kube/config
    ```
 3. Verify your connection to the cluster:
    ```bash
@@ -84,7 +84,7 @@ If you modify a microservice's code on your local branch (e.g. adding a new feat
    Build the Docker image locally, targeting the internal university registry and your group's specific namespace:
    ```bash
    # Example: Building the notifications service
-   cd /home/joaquima/egs/egs/branches/notifications
+   cd branches/notifications
    docker build --platform linux/amd64 -t registry.deti/tenant-grupo8-egs-deti-ua-pt/notifications:v1 .
    ```
 2. **Push the Image to the DETI Registry:**

@@ -19,14 +19,14 @@ Source of truth:
 
 ## Service Summary
 
-| Branch | Observed implementation | Docs status | Notes |
-|---|---|---|---|
-| `composer` | Full orchestrator and public app/API | Partial but useful | README covers the main architecture, but it omits several endpoints and some status-code details. |
-| `iam` | Currently mirrors the Composer Flask app, not Keycloak | Inconsistent | README describes a Keycloak IAM service, but `app.py` exposes the Composer route surface instead. |
-| `notifications` | Transactional email service with OpenAPI docs | Good, but incomplete | OpenAPI is enabled, but the README does not fully enumerate request/response schemas and error cases. |
-| `object-storage` | Bucket/key binary storage service | Good, but incomplete | README is close, but the code exposes additional route shapes and presign behavior that should be documented. |
-| `video-editor` | Async FFmpeg job service | Mismatched | README documents extra endpoints that are not implemented in `app.py`, and references an OpenAPI file that is not present in the workspace. |
-| `main` | Orchestration, deployment, and stack docs | Needs cleanup | The README contains unresolved merge-conflict markers and should point to this file. |
+| Branch | Implementation | Notes |
+|---|---|---|
+| `composer` | Full orchestrator and public app/API | Main platform entrypoint. Handles auth, metadata, orchestration, and the SSE upload flow. |
+| `iam` | Keycloak-based identity layer | Realm definition and login theme files only. No custom application code in this branch. |
+| `notifications` | Transactional email service with OpenAPI | API-key protected. PostgreSQL-backed. Tracking pixel exposed publicly. |
+| `object-storage` | Bucket/key binary storage service | Filesystem backend with RWO PVC. Supports Range requests for streaming. |
+| `video-editor` | Async FFmpeg job service | In-memory job state. Pull model — Composer polls for progress and result. |
+| `main` | Orchestration, deployment, and system docs | Canonical deployment and documentation layer. |
 
 ## Composer API
 
@@ -99,11 +99,6 @@ Composer is the main public entrypoint for UAStream. It serves the UI, handles a
 | `POST` | `/internal/jobs/progress` | Internal service callback | Receives Video Editor progress updates. |
 | `GET` | `/metrics` | No | Prometheus metrics endpoint. |
 
-### Composer Documentation Notes
-
-- The README describes the main orchestration flow well, but it does not list the full route surface.
-- The sequence diagram in the README shows `220 Accepted`, while the code returns `202 Accepted` for the async processing path.
-- Internal routes such as `/internal/storage/...` and `/internal/jobs/progress` should be documented explicitly because they are part of the real orchestration contract.
 
 ## IAM Branch
 

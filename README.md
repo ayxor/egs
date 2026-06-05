@@ -211,6 +211,102 @@ If you want to start the stack manually, use the compose file in this directory 
 
 The stack includes Prometheus and Grafana for metrics and dashboards. The service containers also expose their own `/metrics` endpoints where applicable. See [grafana/README.md](grafana/README.md) for the dashboard catalog and observability model.
 
-## Notes For Maintainers
+---
 
-This README should stay at the level of the whole platform. It should explain the architecture, the branch layout, the service boundaries, and how the stack runs. Endpoint-by-endpoint contract details belong in [API_REFERENCE.md](API_REFERENCE.md).
+## Kubernetes Deployment
+
+The platform is deployed on the University of Aveiro DETI Kubernetes cluster under the namespace `tenant-grupo8-egs-deti-ua-pt`. The full deployment guide is in [k8s/deti_deployment_playbook.md](k8s/deti_deployment_playbook.md). This section summarises the steps.
+
+### Prerequisites
+
+- Active UA VPN connection (Check Point SNX)
+- `/etc/hosts` entry: `193.136.82.35 uastream.com grafana.uastream.com registry.deti`
+- Docker configured to allow the DETI insecure registry (`registry.deti`)
+- `kubectl` configured with the namespace kubeconfig
+
+### Image Registry
+
+All service images are built for `linux/amd64` and pushed to the DETI internal registry:
+
+```
+registry.deti/tenant-grupo8-egs-deti-ua-pt/<service>:v1
+```
+
+To rebuild and redeploy a service:
+
+```bash
+cd egs/branches/<service>
+docker build --platform linux/amd64 -t registry.deti/tenant-grupo8-egs-deti-ua-pt/<service>:v1 .
+docker push registry.deti/tenant-grupo8-egs-deti-ua-pt/<service>:v1
+kubectl rollout restart deployment <service>
+```
+
+### Secrets
+
+Before applying manifests, create the `uastream-secrets` Kubernetes Secret from the template:
+
+```bash
+# Fill in real values in secrets-template.yaml, then apply:
+kubectl apply -f k8s/manifests/secrets-template.yaml
+```
+
+The secret provides database credentials, SMTP configuration, Vault tokens, and service API keys to all pods via environment variables.
+
+### Applying Manifests
+
+Manifests are numbered and must be applied in order to satisfy dependencies:
+
+```bash
+kubectl apply -f k8s/manifests/1-databases.yaml        # PostgreSQL for Composer and Keycloak
+kubectl apply -f k8s/manifests/2-vault.yaml            # Vault with auto-unsealer sidecar
+kubectl apply -f k8s/manifests/3-keycloak.yaml         # Keycloak with realm import and theme
+kubectl apply -f k8s/manifests/4-services.yaml         # Object Storage, Video Editor, Notifications
+kubectl apply -f k8s/manifests/5-composer.yaml         # Composer app and Traefik ingress
+kubectl apply -f k8s/manifests/6-monitoring.yaml       # Prometheus and Grafana
+kubectl apply -f k8s/manifests/7-rbac.yaml             # Prometheus ServiceAccount and RBAC
+kubectl apply -f k8s/manifests/8-network-policies.yaml # Zero-trust network segmentation
+```
+
+To apply the full stack in one command:
+
+```bash
+kubectl apply -f k8s/manifests/
+```
+
+### Verifying the Deployment
+
+```bash
+kubectl get pods
+```
+
+All pods should reach `Running` status with `RESTARTS` at 0 or close to 0. Expected pods:
+
+| Pod | Notes |
+|---|---|
+| `db-0` | Composer PostgreSQL |
+| `kc-db-0` | Keycloak PostgreSQL |
+| `vault-*` | Vault with unsealer sidecar (2/2) |
+| `keycloak-*` | Two replicas forming an Infinispan cluster |
+| `composer-*` | Two replicas |
+| `notifications-*` | Two replicas |
+| `video-editor-*` | Single replica (stateful in-memory job store) |
+| `object-storage-*` | Single replica (RWO PVC) |
+| `prometheus-*` | Metrics collection |
+| `grafana-*` | Dashboard UI |
+
+### Accessing the Platform
+
+| Service | URL | Default credentials |
+|---|---|---|
+| UAStream | `http://uastream.com` | Professor: `professor@ua.pt` / `professor`<br>Student: `student@ua.pt` / `student` |
+| Grafana | `http://grafana.uastream.com` | `admin` / `admin` |
+
+### Scaling Notes
+
+| Service | Replicas | Reason |
+|---|---|---|
+| Composer | 2 | Stateless — safe to scale |
+| Keycloak | 2 | Infinispan cluster + sticky sessions required |
+| Notifications | 2 | PostgreSQL-backed — stateless between replicas |
+| Video Editor | 1 | In-memory job store — not safe to scale horizontally |
+| Object Storage | 1 | ReadWriteOnce PVC — cannot mount to multiple nodes |
