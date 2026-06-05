@@ -279,20 +279,24 @@ kubectl apply -f k8s/manifests/
 kubectl get pods
 ```
 
-All pods should reach `Running` status with `RESTARTS` at 0 or close to 0. Expected pods:
+All pods should reach `Running` status with `RESTARTS` at 0 or close to 0. Expected pods and their Kubernetes controller resources:
 
-| Pod | Notes |
-|---|---|
-| `db-0` | Composer PostgreSQL |
-| `kc-db-0` | Keycloak PostgreSQL |
-| `vault-*` | Vault with unsealer sidecar (2/2) |
-| `keycloak-*` | Two replicas forming an Infinispan cluster |
-| `composer-*` | Two replicas |
-| `notifications-*` | Two replicas |
-| `video-editor-*` | Single replica (stateful in-memory job store) |
-| `object-storage-*` | Single replica (RWO PVC) |
-| `prometheus-*` | Metrics collection |
-| `grafana-*` | Dashboard UI |
+| Pod Name | Controller Type | Replicas | Description / Notes |
+|---|---|---|---|
+| `db-0` | StatefulSet (`db`) | 1 | Composer PostgreSQL database |
+| `kc-db-0` | StatefulSet (`kc-db`) | 1 | Keycloak PostgreSQL database |
+| `vault-*` | Deployment (`vault`) | 1 | Vault server with unsealer sidecar container |
+| `keycloak-*` | Deployment (`keycloak`) | 2 | Keycloak server cluster forming Infinispan ring |
+| `composer-*` | Deployment (`composer`) | 2 | Main application gateway |
+| `notifications-*` | Deployment (`notifications`) | 2 | Transactions email worker (PostgreSQL database-backed) |
+| `video-editor-*` | Deployment (`video-editor`) | 1 | FFmpeg worker (uses stateful in-memory job store) |
+| `object-storage-*` | Deployment (`object-storage`) | 1 | Binary store (backed by a single RWO Persistent Volume) |
+| `prometheus-*` | Deployment (`prometheus`) | 1 | Prometheus scraper (backed by RWO PVC for metrics data) |
+| `grafana-*` | Deployment (`grafana`) | 1 | Grafana dashboard (backed by RWO PVC for dashboards and logs) |
+
+#### Controller Rationale
+* **StatefulSets (`db`, `kc-db`):** Configured for the primary databases to ensure stable network hostnames (e.g. `db-0.db`), ordinal indexing, and stable persistence bindings.
+* **Deployments:** Utilized for all other services. Stateless workloads (`composer`, `keycloak`, and the PG-backed `notifications`) are scaled to `replicas: 2`. Single-replica services (`video-editor` and `object-storage`) are kept at `replicas: 1` due to local in-memory state and ReadWriteOnce PVC mounting constraints, respectively.
 
 ### Accessing the Platform
 
@@ -303,10 +307,10 @@ All pods should reach `Running` status with `RESTARTS` at 0 or close to 0. Expec
 
 ### Scaling Notes
 
-| Service | Replicas | Reason |
-|---|---|---|
-| Composer | 2 | Stateless — safe to scale |
-| Keycloak | 2 | Infinispan cluster + sticky sessions required |
-| Notifications | 2 | PostgreSQL-backed — stateless between replicas |
-| Video Editor | 1 | In-memory job store — not safe to scale horizontally |
-| Object Storage | 1 | ReadWriteOnce PVC — cannot mount to multiple nodes |
+| Service | Controller | Replicas | Reason |
+|---|---|---|---|
+| Composer | Deployment | 2 | Stateless — safe to scale |
+| Keycloak | Deployment | 2 | Infinispan cluster + sticky sessions required |
+| Notifications | Deployment | 2 | PostgreSQL-backed — stateless between replicas |
+| Video Editor | Deployment | 1 | In-memory job store — not safe to scale horizontally |
+| Object Storage | Deployment | 1 | ReadWriteOnce PVC — cannot mount to multiple nodes |
