@@ -40,13 +40,8 @@ X-API-Key: <key>
 
 Required form fields:
 
-- file (binary)
-- dst_url
-- operations (JSON string with a non-empty operations array)
-
-Optional form fields:
-
-- progress_url
+- `file` (binary) — source video file
+- `operations` (JSON string) — non-empty array of operations to apply
 
 Example:
 
@@ -54,7 +49,6 @@ Example:
 curl -X POST "http://localhost:8080/jobs" \
   -H "X-API-Key: stub-api-key" \
   -F "file=@./sample.mp4" \
-  -F "dst_url=https://storage/processed/abc123.mp4" \
   -F 'operations=[{"type":"watermark","params":{"text":"UA","position":"bottom-right","opacity":0.8}}]'
 ```
 
@@ -170,7 +164,20 @@ All tests passed.
 
 ### Service Architecture & Flowchart
 
-This flowchart shows how the Video Editor exposes generic, stateless endpoints, registers job parameters, triggers asynchronous background FFmpeg tasks, parses logs to extract real-time progress, and passive-serves results.
+The Video Editor exposes stateless HTTP endpoints. On `POST /jobs`, it saves the source file to an on-disk job directory under `/tmp/video_editor_jobs/{job_id}/`, registers the job in an in-memory store, and spawns a background thread that runs the FFmpeg pipeline. Progress is streamed to the caller over a Server-Sent Events (SSE) endpoint. Once processing completes, the result video and thumbnail are passively served from disk until the Composer pulls them.
 
-![Video Editor Flowchart](file:///home/joaquima/egs/diagrams/Video%20Service%20Processing-2026-03-10-221853.png)
-
+```
+Composer
+  │
+  ├─ POST /jobs (multipart: file + operations)
+  │     └─> Save src.mp4 to disk, register job in memory, spawn FFmpeg thread
+  │
+  ├─ GET /jobs/{id}/progress   (SSE stream)
+  │     └─> Tail FFmpeg stderr, emit {status, percent, message} events
+  │
+  ├─ GET /jobs/{id}/result     (on status=done)
+  │     └─> Stream dst.mp4 bytes
+  │
+  └─ GET /jobs/{id}/thumbnail  (on status=done)
+        └─> Stream thumb.jpg bytes
+```
