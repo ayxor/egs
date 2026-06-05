@@ -71,7 +71,7 @@ flowchart TD
     
     subgraph Notifications["Notifications Container"]
         EmailAPI["POST /notifications/email\n(Verify X-API-Key)"]
-        SQLStore[("📝 SQLite DB\n[notifications.db]")]
+        PGStore[("📝 PostgreSQL DB\n[db-0, notifications table]")]
         Jinja["Jinja2 Engine\n(Loads templates/<name>.html)"]
         SMTPSender["SMTP Client\n(STARTTLS or SSL Connection)"]
         PixelTrack["GET /track/{notification_id}.gif\n(No Auth)"]
@@ -80,19 +80,20 @@ flowchart TD
     SMTPHost["📧 External SMTP Host\n(Gmail, etc.)"]
 
     Comp -->|1. POST /email {to, template, data}| EmailAPI
-    EmailAPI -->|2. Create record with 'sent' status| SQLStore
+    EmailAPI -->|2. Create record with 'sent' status| PGStore
     EmailAPI -->|3. Add tracking pixel URL parameter| Jinja
     Jinja -->|4. Render HTML + Plaintext| SMTPSender
     SMTPSender -->|5. Connect & sendmail| SMTPHost
     SMTPHost -->|6. Deliver email message| ClientMail
     
     ClientMail -->|7. Load embedded tracking pixel <img src='...gif'>| PixelTrack
-    PixelTrack -->|8. Set status = 'opened' & opened_at = NOW| SQLStore
+    PixelTrack -->|8. Set status = 'opened' & opened_at = NOW| PGStore
     PixelTrack -->|9. Serve 43-byte Transparent 1x1 GIF| ClientMail
 ```
 
-### SQLite Persistent Storage Schema
-This single-table SQLite database tracks all sent templates and open statuses.
+### PostgreSQL Persistent Storage Schema
+
+Notifications are stored in the shared PostgreSQL instance (`db-0`). The table tracks all sent templates and open statuses.
 
 ```mermaid
 erDiagram
