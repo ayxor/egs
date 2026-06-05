@@ -295,8 +295,12 @@ All pods should reach `Running` status with `RESTARTS` at 0 or close to 0. Expec
 | `grafana-*` | Deployment (`grafana`) | 1 | Grafana dashboard (backed by RWO PVC for dashboards and logs) |
 
 #### Controller Rationale
-* **StatefulSets (`db`, `kc-db`):** Configured for the primary databases to ensure stable network hostnames (e.g. `db-0.db`), ordinal indexing, and stable persistence bindings.
-* **Deployments:** Utilized for all other services. Stateless workloads (`composer`, `keycloak`, and the PG-backed `notifications`) are scaled to `replicas: 2`. Single-replica services (`video-editor` and `object-storage`) are kept at `replicas: 1` due to local in-memory state and ReadWriteOnce PVC mounting constraints, respectively.
+* **StatefulSets (`db`, `kc-db`):** Used specifically for primary PostgreSQL databases. They provide stable network identities (e.g., `db-0.db`), sequential ordinal startups, and stable persistent storage volumes dynamically allocated per pod replica via `volumeClaimTemplates`.
+* **Deployments with Persistent Volumes (`vault`, `object-storage`, `prometheus`, `grafana`):** Yes, these services utilize the `Deployment` resource type rather than `StatefulSet` because they mount a single, static Persistent Volume Claim (PVC) rather than requiring distinct, dynamically provisioned disks per ordinal pod.
+  - **ReadWriteOnce (RWO) Storage Constraints:** Because these PVCs are backed by ReadWriteOnce network block storage, they can only be mounted by a single node at a time. If these Deployments were scaled to `replicas > 1` and scheduled across multiple Kubernetes nodes, the scheduler would throw a `Multi-Attach` error, locking the volume.
+  - **Recreate Rollout Strategy:** During updates, these Deployments use a `Recreate` rollout strategy (instead of the default `RollingUpdate`). This guarantees that the existing pod is completely terminated (releasing the RWO volume lock) before the new pod is initialized, preventing volume deadlock issues.
+* **Stateless Deployments (`composer`, `keycloak`, `notifications`):** Scaled to `replicas: 2` for high availability since they contain no local files or state. Keycloak replicas share session cache through Infinispan (clustered via `JDBC_PING` database queries), and Notifications writes database records to the shared PostgreSQL instance instead of local SQLite files.
+* **Video Editor (`video-editor`):** Deployed as a single-replica Deployment because it stores job state and FFmpeg progress in-memory; scaling horizontally would require a centralized queue broker (like RabbitMQ) and shared task store.
 
 ### Accessing the Platform
 
@@ -307,10 +311,13 @@ All pods should reach `Running` status with `RESTARTS` at 0 or close to 0. Expec
 
 ### Scaling Notes
 
-| Service | Controller | Replicas | Reason |
-|---|---|---|---|
-| Composer | Deployment | 2 | Stateless — safe to scale |
-| Keycloak | Deployment | 2 | Infinispan cluster + sticky sessions required |
-| Notifications | Deployment | 2 | PostgreSQL-backed — stateless between replicas |
-| Video Editor | Deployment | 1 | In-memory job store — not safe to scale horizontally |
-| Object Storage | Deployment | 1 | ReadWriteOnce PVC — cannot mount to multiple nodes |
+| Service | Controller | Replicas | Persistent Storage | Rationale for Limits |
+|---|---|---|---|---|
+| Composer | Deployment | 2 | None | Stateless — safe to scale |
+| Keycloak | Deployment | 2 | None | Stateless — Infinispan cluster + sticky sessions enabled |
+| Notifications | Deployment | 2 | None | Stateless — PostgreSQL-backed, state moved off disk |
+| Video Editor | Deployment | 1 | Ephemeral (`emptyDir`) | In-memory job state — not safe to scale horizontally |
+| Object Storage | Deployment | 1 | PVC (`object-storage-pvc`) | RWO PVC volume lock — cannot mount to multiple nodes |
+| Vault | Deployment | 1 | PVC (`vault-data-claim`) | RWO PVC volume lock — Raft backend database storage |
+| Prometheus | Deployment | 1 | PVC (`prometheus-data-claim`) | RWO PVC volume lock — TSDB storage |
+| Grafana | Deployment | 1 | PVC (`grafana-data-claim`) | RWO PVC volume lock — dashboard configuration store |
